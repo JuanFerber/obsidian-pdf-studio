@@ -1,0 +1,8 @@
+node_modules/
+build/
+.local/
+main.js
+styles.css.map
+*.tsbuildinfo
+.DS_Store
+*.log

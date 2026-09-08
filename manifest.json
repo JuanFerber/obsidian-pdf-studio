@@ -1,0 +1,10 @@
+{
+  "id": "pdf-studio",
+  "name": "PDF Studio",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Professional live paginated preview, academic citations with Zotero, and peer review for Obsidian.",
+  "author": "Juan Ignacio Ferber",
+  "authorUrl": "https://github.com/JuanFerber",
+  "isDesktopOnly": true
+}
