@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pre-commit hook: Auto-formatea archivos modificados con Prettier
+
+echo "[pre-commit] Auto-formateando archivos staged con Prettier..."
+
+# Filtra solo archivos staged que sean modificables por Prettier y no ignorados
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=d | grep -E '\.(ts|js|mjs|json|css|md)$' | grep -v '^\.agents/' | grep -v '^\.local/')
+
+if [ -n "$STAGED_FILES" ]; then
+  npx prettier --write $STAGED_FILES
+  git add $STAGED_FILES
+fi
+
+echo "[pre-commit] Formateo completado."
+exit 0

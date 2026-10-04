@@ -1,0 +1,8 @@
+node_modules/
+build/
+.agents/
+.local/
+main.js
+styles.css.map
+*.tsbuildinfo
+package-lock.json

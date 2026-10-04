@@ -1,0 +1,21 @@
+#!/bin/sh
+# Pre-push hook: Bloquea push si fallan tipos o tests
+
+echo "[pre-push] Verificando compilacion estricta de tipos (tsc)..."
+npx tsc --noEmit || {
+  echo ""
+  echo "❌ [pre-push] ERROR: Chequeo de tipos TypeScript fallido."
+  echo "El push ha sido cancelado para proteger el repositorio remoto."
+  exit 1
+}
+
+echo "[pre-push] Ejecutando suite de tests (Vitest)..."
+npm test || {
+  echo ""
+  echo "❌ [pre-push] ERROR: Fallaron tests unitarios o de integracion."
+  echo "El push ha sido cancelado para proteger el repositorio remoto."
+  exit 1
+}
+
+echo "✅ [pre-push] Verificaciones completadas exitosamente. Procediendo con el push."
+exit 0
