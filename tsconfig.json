@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
@@ -13,17 +17,9 @@
     "strict": true,
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": true,
-    "lib": [
-      "DOM",
-      "ES2021"
-    ]
+    "skipLibCheck": true,
+    "lib": ["DOM", "ES2021", "ES2024"]
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "build",
-    ".local"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "build", ".local"]
 }

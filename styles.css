@@ -1,0 +1,759 @@
+/* ==========================================================================
+   PDF Studio - Core Visual Styles
+   ========================================================================== */
+
+/* Outer fixed flex view container */
+.pdf-studio-view {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background-secondary, #1e1e1e);
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* Scrollable sheets container strictly below the toolbar */
+.pdf-scroll-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+  background-color: var(--background-secondary, #1e1e1e);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-bg, rgba(0, 0, 0, 0.25)) transparent;
+}
+
+/* Scrollbar styling for PDF scroll container */
+.pdf-scroll-container::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.pdf-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pdf-scroll-container::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-bg, rgba(0, 0, 0, 0.25));
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.15s ease;
+}
+
+.pdf-scroll-container::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-bg-hover, rgba(0, 0, 0, 0.42));
+}
+
+.pdf-scroll-container::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Sizing wrapper inside scroll container */
+.pdf-pages-wrapper {
+  position: relative;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+/* Staging container used for offscreen double-buffering */
+.pdf-staging-container {
+  position: absolute;
+  top: -99999px;
+  left: -99999px;
+  visibility: hidden;
+  pointer-events: none;
+  width: 1000px;
+}
+
+/* Pages flex column wrapper */
+.pdf-pages-container {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 28px;
+  padding: 0;
+  margin: 0;
+  transform-origin: top left;
+}
+
+/* Individual physical virtual sheet */
+.pdf-page {
+  background-color: #ffffff;
+  color: #1a1a1a;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.15),
+    0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+  user-select: text;
+}
+
+/* Printable content area inside margins */
+.pdf-page-content {
+  box-sizing: border-box;
+  overflow: hidden;
+  color: #1a1a1a;
+  font-family: var(
+    --font-text,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif
+  );
+  line-height: var(--line-height-normal, 1.5);
+}
+
+/* Ensure first heading in a page content has no excessive top gap */
+.pdf-page-content > :first-child {
+  margin-top: 0 !important;
+}
+
+/* Continuation elements spanning across page splits */
+.pdf-split-continued {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  border-top: none !important;
+}
+
+.pdf-page-content pre.pdf-split-continued {
+  margin-top: 0 !important;
+  padding-top: 6px !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-top: 1px dashed var(--background-modifier-border, #d0d7de) !important;
+}
+
+/* Hide copy buttons and interactive widgets in preview and export */
+.pdf-page-content .copy-code-button,
+.print.pdf-studio-print .copy-code-button {
+  display: none !important;
+}
+
+/* Sentinels for manual page breaks */
+.pdf-page-break {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Native table styling on virtual pages */
+.pdf-page-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.pdf-page-content th,
+.pdf-page-content td {
+  border: 1px solid #d0d7de;
+  padding: 6px 12px;
+}
+
+.pdf-page-content th {
+  background-color: #f6f8fa;
+  font-weight: 600;
+}
+
+/* Code blocks styling on paper */
+.pdf-page-content pre {
+  background-color: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: var(--font-monospace, monospace);
+  font-size: 0.9em;
+}
+
+/* Toolbar Unified Pill Controls */
+.pdf-manual-zoom-controls {
+  display: flex;
+  align-items: center;
+}
+
+.pdf-toolbar-pill {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(
+    --background-modifier-form-field,
+    var(--background-secondary)
+  );
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 6px);
+  padding: 2px 4px;
+  height: 28px;
+  box-sizing: border-box;
+  gap: 2px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.pdf-toolbar-pill:hover {
+  border-color: var(
+    --background-modifier-border-hover,
+    var(--background-modifier-border)
+  );
+}
+
+.pdf-toolbar-pill:focus-within {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+  background-color: var(--background-primary);
+}
+
+.pdf-toolbar-pill .clickable-icon {
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+  border-radius: var(--radius-s, 4px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--icon-color, var(--text-muted));
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+
+.pdf-toolbar-pill .clickable-icon:hover {
+  color: var(--icon-color-hover, var(--text-normal));
+  background-color: var(--background-modifier-hover);
+}
+
+/* Page Counter Sub-container with strictly symmetric gaps and identical baseline */
+.pdf-pill-page-counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  line-height: 1;
+  padding: 0 4px;
+  gap: 3px;
+  box-sizing: border-box;
+}
+
+.pdf-toolbar-pill .pdf-pill-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  height: 22px;
+  line-height: 22px;
+  padding: 0 1px;
+  margin: 0;
+  box-sizing: border-box;
+  border-radius: 4px;
+  text-align: center;
+  vertical-align: middle;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+
+.pdf-toolbar-pill .pdf-pill-input:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.pdf-toolbar-pill .pdf-pill-input:focus {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-accent, var(--text-normal));
+}
+
+.pdf-toolbar-pill .pdf-page-input {
+  width: 14px;
+  min-width: 14px;
+  max-width: 36px;
+  field-sizing: content;
+}
+
+.pdf-toolbar-pill .pdf-zoom-input {
+  width: 46px;
+  min-width: 38px;
+}
+
+.pdf-toolbar-pill .pdf-pill-separator {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  padding: 0;
+  margin: 0;
+  line-height: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.pdf-toolbar-pill .pdf-pill-total {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-normal);
+  padding: 0;
+  margin: 0;
+  line-height: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* ==========================================================================
+   Reload Button 360 Rotation (GPU Hardware Accelerated)
+   ========================================================================== */
+
+.pdf-reload-btn svg {
+  display: block;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+@keyframes pdf-spin-smooth {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.pdf-reload-btn.is-spinning svg {
+  animation: pdf-spin-smooth 0.6s cubic-bezier(0.2, 0.75, 0.25, 1) forwards;
+}
+
+/* ==========================================================================
+   Print Rules (@media print)
+   ========================================================================== */
+
+@media print {
+  /* Reset background and margins from browser */
+  body,
+  .pdf-studio-view,
+  .pdf-scroll-container,
+  .pdf-pages-wrapper,
+  .pdf-pages-container {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    width: auto !important;
+    height: auto !important;
+    position: static !important;
+  }
+
+  /* Force exact page breaks without browser margins */
+  .pdf-page {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide any UI controls, scrollbars, and copy buttons */
+  .pdf-studio-toolbar,
+  .pdf-staging-container,
+  .copy-code-button,
+  button[aria-label*="Copy" i],
+  button[aria-label*="Copiar" i] {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   Print Staging Container for Native Electron Export
+   ========================================================================== */
+
+/* Offscreen on screen display so user never sees a flash */
+@media screen {
+  .print.pdf-studio-print {
+    position: fixed !important;
+    top: -99999px !important;
+    left: -99999px !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+/* Pristine layout on paper print */
+@media print {
+  .print.pdf-studio-print {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    opacity: 1 !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print.pdf-studio-print .pdf-pages-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+    transform: none !important;
+    position: static !important;
+    background: transparent !important;
+  }
+
+  .print.pdf-studio-print .pdf-page {
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: #ffffff !important;
+    color: #1a1a1a !important;
+  }
+
+  .print.pdf-studio-print .pdf-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+}
+
+/* ==========================================================================
+   Options Popover Card (Modern Dropdown UI)
+   ========================================================================== */
+
+@keyframes pdf-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pdf-options-popover {
+  position: fixed;
+  z-index: var(--layer-popover, 1000);
+  width: 290px;
+  background-color: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 14px 14px 12px 14px;
+  box-sizing: border-box;
+  font-family: var(--font-interface, sans-serif);
+  animation: pdf-popover-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top right;
+  user-select: none;
+}
+
+.theme-dark .pdf-options-popover {
+  background-color: #1e2025;
+  border: 1px solid #2e323b;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.pdf-popover-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8c93a0;
+  margin: 0 0 6px 4px;
+}
+
+.theme-dark .pdf-popover-header {
+  color: #7b8290;
+}
+
+.pdf-popover-divider {
+  height: 1px;
+  background-color: #f1f3f6;
+  margin: 10px 0;
+}
+
+.theme-dark .pdf-popover-divider {
+  background-color: #272b33;
+}
+
+/* Auto-zoom row */
+.pdf-popover-autozoom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.12s ease;
+}
+
+.pdf-popover-autozoom-row:hover {
+  background-color: #f8fafc;
+}
+
+.theme-dark .pdf-popover-autozoom-row:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.pdf-popover-row-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  line-height: 1.25;
+}
+
+.theme-dark .pdf-popover-row-title {
+  color: #e2e8f0;
+}
+
+/* iOS-style Switch Toggle */
+.pdf-popover-toggle {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  background-color: #e2e8f0;
+  transition: background-color 0.2s ease;
+}
+
+.theme-dark .pdf-popover-toggle {
+  background-color: #374151;
+}
+
+.pdf-popover-toggle.is-checked {
+  background-color: var(--interactive-accent, #4f46e5);
+}
+
+.pdf-popover-toggle-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pdf-popover-toggle.is-checked .pdf-popover-toggle-knob {
+  transform: translateX(16px);
+}
+
+/* Selectable Option Row */
+.pdf-popover-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 2px;
+  background-color: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.pdf-popover-option:hover {
+  background-color: #f8fafc;
+}
+
+.theme-dark .pdf-popover-option:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.pdf-popover-option.is-active {
+  background-color: #eef2ff;
+}
+
+.theme-dark .pdf-popover-option.is-active {
+  background-color: rgba(99, 102, 241, 0.18);
+}
+
+.pdf-popover-option-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdf-popover-check-slot {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pdf-popover-check-slot svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.5;
+  color: var(--interactive-accent, #4f46e5);
+}
+
+.theme-dark .pdf-popover-check-slot svg {
+  color: #818cf8;
+}
+
+.pdf-popover-option-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.theme-dark .pdf-popover-option-label {
+  color: #e2e8f0;
+}
+
+.pdf-popover-option.is-active .pdf-popover-option-label {
+  font-weight: 600;
+  color: #3730a3;
+}
+
+.theme-dark .pdf-popover-option.is-active .pdf-popover-option-label {
+  color: #a5b4fc;
+}
+
+.pdf-popover-option-dim {
+  font-size: 11.5px;
+  font-family: var(--font-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.theme-dark .pdf-popover-option-dim {
+  color: #94a3b8;
+}
+
+.pdf-popover-option.is-active .pdf-popover-option-dim {
+  font-weight: 600;
+  color: #4338ca;
+}
+
+.theme-dark .pdf-popover-option.is-active .pdf-popover-option-dim {
+  color: #a5b4fc;
+}
+
+/* Action Rows (Modo Oscuro, Configuración) */
+.pdf-popover-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 4px;
+  border-radius: 6px;
+  transition: background-color 0.12s ease;
+}
+
+.pdf-popover-action-row.is-clickable {
+  cursor: pointer;
+}
+
+.pdf-popover-action-row.is-clickable:hover {
+  background-color: #f8fafc;
+}
+
+.theme-dark .pdf-popover-action-row.is-clickable:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.pdf-popover-action-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-popover-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.theme-dark .pdf-popover-icon {
+  color: #94a3b8;
+}
+
+.pdf-popover-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.pdf-popover-action-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.theme-dark .pdf-popover-action-label {
+  color: #e2e8f0;
+}
+
+.pdf-popover-icon-right {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+}
+
+.theme-dark .pdf-popover-icon-right {
+  color: #64748b;
+}
+
+.pdf-popover-icon-right svg {
+  width: 13px;
+  height: 13px;
+}
