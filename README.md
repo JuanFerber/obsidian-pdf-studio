@@ -169,7 +169,7 @@ npm run dev
 ├── manifest.json            # Obsidian plugin metadata and minimum app version
 ├── package.json             # Build toolchain and development scripts
 ├── tsconfig.json            # TypeScript compiler options (ES2021 / ES2024 lib)
-├── vitest.config.ts         # Vitest test runner configuration
+├── vitest.config.mts        # Vitest test runner configuration
 ├── esbuild.config.mjs       # Bundling pipeline and local vault sync
 ├── styles.css               # Virtual sheet layout, paper shadows, and print media rules
 ├── LICENSE                  # MIT License definition
