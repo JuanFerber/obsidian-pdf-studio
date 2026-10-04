@@ -133,7 +133,7 @@ This content starts at the top of the next virtual sheet.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (version 18 or higher recommended)
+- [Node.js](https://nodejs.org/) (version 22 or higher recommended)
 - [npm](https://www.npmjs.com/)
 
 ### Setup & Compilation
