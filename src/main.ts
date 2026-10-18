@@ -115,7 +115,8 @@ export default class PDFStudioPlugin
     const leaves = this.app.workspace.getLeavesOfType(PDF_VIEW_TYPE);
     for (const leaf of leaves) {
       if (leaf.view instanceof PDFStudioView) {
-        void leaf.view.triggerRender(false);
+        leaf.view.clearCache();
+        void leaf.view.triggerRender(false, true);
       }
     }
   }

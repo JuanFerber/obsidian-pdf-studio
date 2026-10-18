@@ -36,6 +36,18 @@ describe("Markdown Preprocessor", () => {
     expect(processed.split('<div class="pdf-page-break"').length).toBe(2); // exactly 1 replacement
   });
 
+  it("correctly preserves \\pagebreak inside a 4-backtick fence containing a 3-backtick fence", () => {
+    const md =
+      "````markdown\nHere is an example:\n```ts\n\\pagebreak\n```\nStill inside 4-backtick fence:\n\\pagebreak\n````\n\nOutside:\n\\pagebreak";
+    const processed = transformPageBreaks(md);
+    // Inside fences should not be replaced
+    expect(processed).toContain("```ts\n\\pagebreak\n```");
+    expect(processed).toContain("Still inside 4-backtick fence:\n\\pagebreak");
+    // Exactly one sentinel created (for the one outside the 4-backtick fence)
+    const parts = processed.split('<div class="pdf-page-break"');
+    expect(parts.length).toBe(2);
+  });
+
   it("preprocessMarkdown applies registered transformers cleanly", () => {
     const md = "# Heading\n\\pagebreak\nContent";
     const result = preprocessMarkdown(md);

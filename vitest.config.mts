@@ -5,6 +5,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      obsidian: path.resolve(
+        import.meta.dirname,
+        "./src/tests/__mocks__/obsidian.ts",
+      ),
     },
   },
   test: {

@@ -3,7 +3,7 @@
   "name": "PDF Studio",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Professional live paginated preview, academic citations with Zotero, and peer review for Obsidian.",
+  "description": "Professional live paginated preview, physical sheet layout, and high-fidelity vector PDF export for Obsidian.",
   "author": "Juan Ignacio Ferber",
   "authorUrl": "https://github.com/JuanFerber",
   "isDesktopOnly": true

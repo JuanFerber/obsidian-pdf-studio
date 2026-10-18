@@ -58,20 +58,36 @@ const PAGE_BREAK_REGEX =
 export function transformPageBreaks(markdown: string): string {
   const lines = markdown.split(/\r?\n/);
   const outputLines: string[] = [];
-  let insideCodeFence = false;
+  let activeFenceChar: string | null = null;
+  let activeFenceLength = 0;
 
   for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Toggle fence state upon encountering standard Markdown code fences (``` or ~~~)
-    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-      insideCodeFence = !insideCodeFence;
-      outputLines.push(line);
-      continue;
+    if (activeFenceChar === null) {
+      const match = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      const fence = match?.[1];
+      if (fence && fence[0]) {
+        activeFenceChar = fence[0];
+        activeFenceLength = fence.length;
+        outputLines.push(line);
+        continue;
+      }
+    } else {
+      const match = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+      const fence = match?.[1];
+      if (
+        fence &&
+        fence[0] === activeFenceChar &&
+        fence.length >= activeFenceLength
+      ) {
+        activeFenceChar = null;
+        activeFenceLength = 0;
+        outputLines.push(line);
+        continue;
+      }
     }
 
     // Only convert directives outside active code fences
-    if (!insideCodeFence && PAGE_BREAK_REGEX.test(line)) {
+    if (activeFenceChar === null && PAGE_BREAK_REGEX.test(line)) {
       outputLines.push(PAGE_BREAK_HTML);
     } else {
       outputLines.push(line);

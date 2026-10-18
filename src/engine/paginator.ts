@@ -8,7 +8,7 @@
  * - Delegates overflowing nodes to {@link splitElementAtOverflow} for semantic bisection.
  */
 
-import type { PageLimitsPx } from "@/engine/dom-utils";
+import { type PageLimitsPx, waitForNextFrame } from "@/engine/dom-utils";
 import {
   isCodeBlock,
   isUnsplittable,
@@ -66,19 +66,13 @@ function createVirtualPage(
   pageEl.style.width = `${limits.pageWidthPx}px`;
   pageEl.style.minHeight = `${limits.pageHeightPx}px`;
   pageEl.style.maxHeight = `${limits.pageHeightPx}px`;
-  pageEl.style.position = "relative";
-  pageEl.style.boxSizing = "border-box";
-  pageEl.style.overflow = "hidden";
 
   const contentEl = doc.createElement("div");
   contentEl.classList.add("pdf-page-content");
-  contentEl.style.position = "absolute";
   contentEl.style.top = `${limits.marginTopPx}px`;
   contentEl.style.left = `${limits.marginLeftPx}px`;
   contentEl.style.width = `${limits.contentWidthPx}px`;
   contentEl.style.height = `${limits.contentHeightPx}px`;
-  contentEl.style.boxSizing = "border-box";
-  contentEl.style.overflow = "hidden";
 
   pageEl.appendChild(contentEl);
 
@@ -118,30 +112,36 @@ function isLeadInElement(el: HTMLElement | null): boolean {
  * Distributes clean source DOM elements across virtual sheets in a strict unidirectional flow.
  *
  * Architectural Invariants:
- * 1. **Unidirectional Immutability:** Elements from `sourceContainer` are cloned. Nodos from prior
- *    pages are never recycled or extracted back into the Markdown source.
+ * 1. **Zero Mass-Cloning Transfer:** Elements from `sourceContainer` are transferred directly
+ *    into virtual pages, avoiding heap duplication of large DOM subtrees.
  * 2. **Measurement Staging:** Temporarily mounts the output tree to `hostContainer` so that
  *    browser layout APIs (`getBoundingClientRect`) return real rendered pixel values, detaching
  *    prior to return.
- * 3. **Keep-With-Next Enforcement:** Prevents orphan headings or introductory leads from resting
+ * 3. **Cooperative Time-Slicing:** Yields execution to the browser via `waitForNextFrame` when loop
+ *    duration exceeds `maxFrameBudgetMs`, maintaining 60 FPS UI responsiveness.
+ * 4. **Keep-With-Next Enforcement:** Prevents orphan headings or introductory leads from resting
  *    at the very bottom of a page without trailing content.
- * 4. **Graceful Overflow Fallback:** Elements exceeding printable height are either bisected via
+ * 5. **Graceful Overflow Fallback:** Elements exceeding printable height are either bisected via
  *    {@link splitElementAtOverflow} or advanced intact to a fresh sheet.
  *
  * @param sourceContainer - Scratch container containing clean DOM nodes rendered from Markdown.
  * @param limits - Calculated pixel boundary limits and printable margins.
  * @param hostContainer - Optional staging DOM element enabling active viewport measurement.
  * @param doc - Document context supporting primary and popout Obsidian windows.
+ * @param maxFrameBudgetMs - Maximum continuous execution time in milliseconds before yielding control.
+ * @param shouldCancel - Optional cancellation predicate queried following each frame yield.
  * @returns Fully populated {@link PaginationResult} containing virtual page nodes and count.
  */
-export function paginate(
+export async function paginate(
   sourceContainer: HTMLElement,
   limits: PageLimitsPx,
   hostContainer?: HTMLElement,
   doc: Document = typeof activeDocument !== "undefined"
     ? activeDocument
     : document,
-): PaginationResult {
+  maxFrameBudgetMs = 10,
+  shouldCancel?: () => boolean,
+): Promise<PaginationResult> {
   const pages: VirtualPage[] = [];
   const rootContainer = doc.createElement("div");
   rootContainer.classList.add("pdf-pages-container");
@@ -156,13 +156,19 @@ export function paginate(
   pages.push(currentPage);
   rootContainer.appendChild(currentPage.pageEl);
 
-  // Clone elements to maintain strict immutability of the source container
-  const children = Array.from(sourceContainer.children).map((child) =>
-    child.cloneNode(true),
-  ) as HTMLElement[];
+  // Consume elements directly from scratchpad to avoid mass-cloning overhead
+  const children = Array.from(sourceContainer.children) as HTMLElement[];
 
+  let lastYieldTime = performance.now();
   let i = 0;
   while (i < children.length) {
+    if (performance.now() - lastYieldTime > maxFrameBudgetMs) {
+      await waitForNextFrame();
+      if (shouldCancel?.()) {
+        break;
+      }
+      lastYieldTime = performance.now();
+    }
     const element = children[i];
     if (!element) {
       i++;

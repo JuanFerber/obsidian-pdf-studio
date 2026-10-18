@@ -6,8 +6,13 @@
  * and coordinates asynchronous settings persistence.
  */
 
-import { App, PluginSettingTab, Setting } from "obsidian";
-import type { IPDFStudioPlugin, PDFStudioSettings, PageFormat } from "@/types";
+import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import {
+  type IPDFStudioPlugin,
+  PAGE_FORMATS_MM,
+  type PDFStudioSettings,
+  type PageFormat,
+} from "@/types";
 
 /**
  * Baseline configuration values loaded on fresh installations or missing schema keys.
@@ -102,10 +107,20 @@ export class PDFStudioSettingsTab extends PluginSettingTab {
         text
           .setValue(String(this.plugin.settings.margins.top))
           .onChange(async (value) => {
+            if (value.trim() === "") return;
             const num = Number(value);
-            if (!isNaN(num) && num >= 0) {
+            const dims = PAGE_FORMATS_MM[this.plugin.settings.pageFormat];
+            if (
+              !isNaN(num) &&
+              num >= 0 &&
+              num + this.plugin.settings.margins.bottom < dims.height - 20
+            ) {
               this.plugin.settings.margins.top = num;
               await this.plugin.saveSettings();
+            } else {
+              new Notice(
+                `Margin top must leave at least 20mm printable height (max ${dims.height - 20 - this.plugin.settings.margins.bottom} mm).`,
+              );
             }
           });
       });
@@ -120,14 +135,75 @@ export class PDFStudioSettingsTab extends PluginSettingTab {
         text
           .setValue(String(this.plugin.settings.margins.bottom))
           .onChange(async (value) => {
+            if (value.trim() === "") return;
             const num = Number(value);
-            if (!isNaN(num) && num >= 0) {
+            const dims = PAGE_FORMATS_MM[this.plugin.settings.pageFormat];
+            if (
+              !isNaN(num) &&
+              num >= 0 &&
+              num + this.plugin.settings.margins.top < dims.height - 20
+            ) {
               this.plugin.settings.margins.bottom = num;
               await this.plugin.saveSettings();
+            } else {
+              new Notice(
+                `Margin bottom must leave at least 20mm printable height (max ${dims.height - 20 - this.plugin.settings.margins.top} mm).`,
+              );
             }
           });
       });
 
+    // Margin Left
+    new Setting(containerEl)
+      .setName("Margin Left (mm)")
+      .setDesc("Left printable margin clearance in physical millimeters.")
+      .addText((text) => {
+        text
+          .setValue(String(this.plugin.settings.margins.left))
+          .onChange(async (value) => {
+            if (value.trim() === "") return;
+            const num = Number(value);
+            const dims = PAGE_FORMATS_MM[this.plugin.settings.pageFormat];
+            if (
+              !isNaN(num) &&
+              num >= 0 &&
+              num + this.plugin.settings.margins.right < dims.width - 20
+            ) {
+              this.plugin.settings.margins.left = num;
+              await this.plugin.saveSettings();
+            } else {
+              new Notice(
+                `Margin left must leave at least 20mm printable width (max ${dims.width - 20 - this.plugin.settings.margins.right} mm).`,
+              );
+            }
+          });
+      });
+
+    // Margin Right
+    new Setting(containerEl)
+      .setName("Margin Right (mm)")
+      .setDesc("Right printable margin clearance in physical millimeters.")
+      .addText((text) => {
+        text
+          .setValue(String(this.plugin.settings.margins.right))
+          .onChange(async (value) => {
+            if (value.trim() === "") return;
+            const num = Number(value);
+            const dims = PAGE_FORMATS_MM[this.plugin.settings.pageFormat];
+            if (
+              !isNaN(num) &&
+              num >= 0 &&
+              num + this.plugin.settings.margins.left < dims.width - 20
+            ) {
+              this.plugin.settings.margins.right = num;
+              await this.plugin.saveSettings();
+            } else {
+              new Notice(
+                `Margin right must leave at least 20mm printable width (max ${dims.width - 20 - this.plugin.settings.margins.left} mm).`,
+              );
+            }
+          });
+      });
     // Debounce delay
     new Setting(containerEl)
       .setName("Debounce Delay (ms)")
