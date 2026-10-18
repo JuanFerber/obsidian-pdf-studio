@@ -1,7 +1,7 @@
 {
   "name": "obsidian-pdf-studio",
   "version": "0.1.0",
-  "description": "Professional live paginated preview, academic citations with Zotero, and peer review for Obsidian.",
+  "description": "Professional live paginated preview, physical sheet layout, and high-fidelity vector PDF export for Obsidian.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -16,9 +16,8 @@
     "obsidian",
     "obsidian-plugin",
     "pdf",
-    "zotero",
-    "criticmarkup",
-    "academic"
+    "preview",
+    "export"
   ],
   "author": "Juan Ignacio Ferber",
   "license": "MIT",

@@ -55,13 +55,16 @@ export interface DomSettleOptions {
   maxWaitMs?: number;
 }
 
+let cachedDpr = 0;
+let cachedPxPerMm = 0;
+
 /**
  * Measures the active display ratio of screen pixels per physical millimeter.
  *
  * Architecture and Performance:
  * Dynamically measures a single 100mm reference element in the target DOM rather than assuming
- * a static 96 DPI baseline. This accurately compensates for user interface scaling, OS display
- * fractional scaling, and Obsidian window zoom factors while confining layout reflow to a single probe.
+ * a static 96 DPI baseline. Results are memoized against window.devicePixelRatio to avoid
+ * synchronous layout reflow on repeated computations.
  *
  * @param doc - Target Document context (supports main window and Obsidian popout windows).
  * @returns Ratio of screen pixels per millimeter.
@@ -71,6 +74,14 @@ function getPixelsPerMm(
     ? activeDocument
     : document,
 ): number {
+  const dpr =
+    doc.defaultView?.devicePixelRatio ??
+    (typeof window !== "undefined" ? window.devicePixelRatio : 1);
+
+  if (dpr === cachedDpr && cachedPxPerMm > 0) {
+    return cachedPxPerMm;
+  }
+
   const tempEl = doc.createElement("div");
 
   tempEl.style.cssText = `
@@ -86,7 +97,16 @@ function getPixelsPerMm(
   const measured100mmPx = tempEl.offsetHeight;
   tempEl.remove();
 
-  return measured100mmPx / 100;
+  if (measured100mmPx > 0) {
+    cachedDpr = dpr;
+    cachedPxPerMm = measured100mmPx / 100;
+    return cachedPxPerMm;
+  }
+
+  // Standard CSS mm-to-pixel ratio (96 px per inch / 25.4 mm per inch)
+  // In CSS pixel units, 100mm is always 377.95px regardless of screen DPR.
+  // Do not cache the fallback so subsequent renders can probe real DOM dimensions once attached.
+  return 96 / 25.4;
 }
 
 /**

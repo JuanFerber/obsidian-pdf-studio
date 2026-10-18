@@ -5,6 +5,7 @@ import {
   splitCodeBlock,
   splitTable,
   splitList,
+  splitTextElement,
 } from "@/engine/splitter";
 import { paginate } from "@/engine/paginator";
 import type { PageLimitsPx } from "@/engine/dom-utils";
@@ -183,7 +184,7 @@ describe("Code Block Splitter & Pagination", () => {
     expect(result).toBeNull();
   });
 
-  it("paginator moves overflowing code block intact to the next page when not first on page", () => {
+  it("paginator moves overflowing code block intact to the next page when not first on page", async () => {
     const source = document.createElement("div");
 
     // Paragraph at top of page 1
@@ -259,7 +260,7 @@ describe("Code Block Splitter & Pagination", () => {
       };
     });
 
-    const result = paginate(source, dummyLimits);
+    const result = await paginate(source, dummyLimits);
     expect(result.totalPages).toBeGreaterThanOrEqual(2);
 
     // Page 1 should contain p1 (h2 was moved with pre as keep-with-next)
@@ -274,7 +275,7 @@ describe("Code Block Splitter & Pagination", () => {
     expect(page2Content?.children[1]?.tagName).toBe("PRE");
   });
 
-  it("paginator moves short lead-in paragraph together with overflowing code block", () => {
+  it("paginator moves short lead-in paragraph together with overflowing code block", async () => {
     const source = document.createElement("div");
 
     // Preceding paragraph (intro)
@@ -350,7 +351,7 @@ describe("Code Block Splitter & Pagination", () => {
       };
     });
 
-    const result = paginate(source, dummyLimits);
+    const result = await paginate(source, dummyLimits);
     expect(result.totalPages).toBeGreaterThanOrEqual(2);
 
     // Page 1 should only contain the introductory paragraph (leadIn was moved to keep-with-next)
@@ -410,6 +411,104 @@ describe("Code Block Splitter & Pagination", () => {
     expect(result.tail.querySelector("thead")).not.toBeNull();
     expect(result.tail.querySelectorAll("tbody tr").length).toBe(3);
     expect(result.tail.classList.contains("pdf-split-continued")).toBe(true);
+  });
+
+  it("splitTable returns null and moves intact when only 1 data row exists", () => {
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const thTr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = "Col";
+    thTr.appendChild(th);
+    thead.appendChild(thTr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.textContent = "Only Row";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    table.appendChild(tbody);
+
+    const result = splitTable(table, 200, 0);
+    expect(result).toBeNull();
+  });
+
+  it("splitTable returns null when first data row overflows, preventing orphaned header", () => {
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const thTr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = "Col";
+    thTr.appendChild(th);
+    thead.appendChild(thTr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (let i = 1; i <= 3; i++) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.textContent = `Row ${i}`;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    const rows = tbody.querySelectorAll("tr");
+    rows.forEach((row, idx) => {
+      vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
+        top: 300 + idx * 50,
+        bottom: 350 + idx * 50,
+        height: 50,
+        width: 700,
+        left: 0,
+        right: 700,
+        x: 0,
+        y: 300 + idx * 50,
+        toJSON: () => {},
+      });
+    });
+
+    // maxBottomPx = 200, but row 0 bottom is 350 -> row 0 overflows
+    const result = splitTable(table, 200, 0);
+    expect(result).toBeNull();
+  });
+
+  it("splitTextElement snaps to whitespace and does not split mid-word", () => {
+    const p = document.createElement("p");
+    p.textContent = "Alpha beta gamma delta";
+    document.body.appendChild(p);
+
+    const originalGetBoundingClientRect = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = function (this: Range): DOMRect {
+      return {
+        top: 0,
+        bottom: this.endOffset * 10,
+        height: 10,
+        width: 100,
+        left: 0,
+        right: 100,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      };
+    };
+
+    // maxBottomPx = 135: mid search would hit offset 13 ("Alpha beta ga")
+    // Whitespace snap snaps back to offset 11 ("Alpha beta ")
+    const result = splitTextElement(p, 135, 0);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.head?.textContent).toBe("Alpha beta ");
+    expect(result.tail.textContent).toBe("gamma delta");
+    p.remove();
+    if (originalGetBoundingClientRect) {
+      Range.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    } else {
+      Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+    }
   });
 
   it("splitList preserves numbering for ordered lists", () => {

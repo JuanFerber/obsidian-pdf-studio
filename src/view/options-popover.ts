@@ -35,6 +35,7 @@ const FORMAT_ITEMS: FormatItem[] = [
   { key: "A4", title: "A4", dim: "210 × 297 mm" },
   { key: "Letter", title: "Carta", dim: "215.9 × 279.4 mm" },
   { key: "Legal", title: "Oficio", dim: "215.9 × 355.6 mm" },
+  { key: "A3", title: "A3", dim: "297 × 420 mm" },
   { key: "A5", title: "A5", dim: "148 × 210 mm" },
 ];
 

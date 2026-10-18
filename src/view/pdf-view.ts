@@ -7,6 +7,7 @@
  */
 
 import {
+  Component,
   ItemView,
   MarkdownRenderer,
   Notice,
@@ -26,6 +27,21 @@ import { PDFStudioOptionsPopover } from "@/view/options-popover";
 /** Unique identifier for the PDF Studio preview workspace leaf. */
 export const PDF_VIEW_TYPE = "pdf-studio-preview";
 
+const MAX_VIEW_CACHE_ENTRIES = 8;
+
+interface CachedPreviewState {
+  filePath: string;
+  mtime: number;
+  rawMarkdown: string;
+  configSignature: string;
+  pagesFragment: DocumentFragment;
+  totalPages: number;
+  currentPageNumber: number;
+  scrollTop: number;
+  scrollLeft: number;
+  component: Component;
+}
+
 /**
  * Interactive preview pane managing real-time virtual page rendering and zoom controls.
  */
@@ -34,12 +50,15 @@ export class PDFStudioView extends ItemView {
   private optionsPopover: PDFStudioOptionsPopover;
   private lastRenderedText = "";
   private lastRenderedFilePath = "";
+  private pendingFilePath = "";
   private lastRenderedConfigSignature = "";
   private currentManualZoom = 100;
   private debounceTimer: number | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeAnimFrameId: number | null = null;
-
+  private viewCache = new Map<string, CachedPreviewState>();
+  private currentRenderComponent: Component | null = null;
+  private renderSeq = 0;
   private totalPagesCount = 1;
   private currentPageNumber = 1;
 
@@ -130,6 +149,13 @@ export class PDFStudioView extends ItemView {
     // Register workspace listeners for live reactivity
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
+        const activePath = this.getActiveFile()?.path ?? "";
+        if (
+          activePath === this.lastRenderedFilePath &&
+          activePath === this.pendingFilePath
+        ) {
+          return;
+        }
         void this.triggerRender(false);
       }),
     );
@@ -142,6 +168,31 @@ export class PDFStudioView extends ItemView {
       }),
     );
 
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        if (file instanceof TFile && this.viewCache.has(file.path)) {
+          const entry = this.viewCache.get(file.path);
+          if (entry) {
+            entry.component.unload();
+            this.removeChild(entry.component);
+          }
+          this.viewCache.delete(file.path);
+        }
+      }),
+    );
+
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        if (file instanceof TFile && this.viewCache.has(oldPath)) {
+          const entry = this.viewCache.get(oldPath);
+          if (entry) {
+            this.viewCache.delete(oldPath);
+            entry.filePath = file.path;
+            this.viewCache.set(file.path, entry);
+          }
+        }
+      }),
+    );
     // Observe scroll container scroll to update active page number automatically
     this.scrollContainerEl.addEventListener("scroll", this.onContainerScroll, {
       passive: true,
@@ -199,6 +250,7 @@ export class PDFStudioView extends ItemView {
       this.resizeObserver = null;
     }
     this.optionsPopover.close();
+    this.clearCache();
     this.containerEl.empty();
   }
 
@@ -207,26 +259,9 @@ export class PDFStudioView extends ItemView {
    */
   private buildToolbar(): void {
     this.toolbarEl = this.containerEl.createDiv({ cls: "pdf-studio-toolbar" });
-    this.toolbarEl.style.cssText = `
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 4px 12px;
-			border-bottom: 1px solid var(--background-modifier-border);
-			background-color: var(--background-primary);
-			flex: 0 0 auto;
-			width: 100%;
-			box-sizing: border-box;
-			position: relative;
-			z-index: 100;
-			min-height: 36px;
-		`;
 
     // Left Controls: [< 1 / N >] grouped in a unified pill
     const leftControls = this.toolbarEl.createDiv({ cls: "pdf-toolbar-left" });
-    leftControls.style.display = "flex";
-    leftControls.style.alignItems = "center";
-
     const pagePill = leftControls.createDiv({ cls: "pdf-toolbar-pill" });
 
     // Previous Page Button
@@ -315,9 +350,6 @@ export class PDFStudioView extends ItemView {
     const rightControls = this.toolbarEl.createDiv({
       cls: "pdf-toolbar-right",
     });
-    rightControls.style.display = "flex";
-    rightControls.style.alignItems = "center";
-    rightControls.style.gap = "6px";
 
     // Manual Zoom Sub-container (revealed when autoZoom is disabled)
     this.manualZoomContainerEl = rightControls.createDiv({
@@ -922,19 +954,64 @@ export class PDFStudioView extends ItemView {
    * @param force - When true, re-executes pipeline even if source text matches cache.
    */
   private async renderPipeline(force = false): Promise<void> {
+    const seq = ++this.renderSeq;
     const file = this.getActiveFile();
+    this.pendingFilePath = file?.path ?? "";
     if (!file || file.extension !== "md") {
+      this.detachCurrentViewToCache();
       this.pagesContainerEl.empty();
+      this.pendingFilePath = "";
+      this.lastRenderedFilePath = "";
+      this.lastRenderedText = "";
+      this.lastRenderedConfigSignature = "";
       this.totalPagesCount = 0;
       this.currentPageNumber = 0;
       this.updatePageIndicator();
       return;
     }
 
-    const rawMarkdown = await this.app.vault.read(file);
     const currentConfig = this.getConfigSignature();
 
-    // Change gate: abort immediately if neither markdown nor page config changed (0% CPU)
+    // LRU Cache Check: Instant hit on tab switch if mtime & config match
+    const cached = this.viewCache.get(file.path);
+    if (
+      !force &&
+      cached &&
+      cached.mtime === file.stat.mtime &&
+      cached.configSignature === currentConfig
+    ) {
+      // Refresh LRU order
+      this.viewCache.delete(file.path);
+      this.viewCache.set(file.path, cached);
+
+      if (this.lastRenderedFilePath !== file.path) {
+        this.detachCurrentViewToCache();
+        this.pagesContainerEl.empty();
+        this.pagesContainerEl.appendChild(cached.pagesFragment);
+      }
+
+      this.pendingFilePath = file.path;
+      this.lastRenderedFilePath = file.path;
+      this.lastRenderedConfigSignature = cached.configSignature;
+      this.totalPagesCount = cached.totalPages;
+      this.currentPageNumber = cached.currentPageNumber;
+      this.currentRenderComponent = cached.component;
+
+      this.updatePageIndicator();
+      this.applyZoom();
+
+      if (this.scrollContainerEl) {
+        this.scrollContainerEl.scrollTop = cached.scrollTop;
+        this.scrollContainerEl.scrollLeft = cached.scrollLeft;
+      }
+      this.onContainerScroll();
+      return;
+    }
+
+    const rawMarkdown = await this.app.vault.read(file);
+    if (seq !== this.renderSeq) return;
+
+    // Change gate: abort if neither markdown nor page config changed
     if (
       !force &&
       rawMarkdown === this.lastRenderedText &&
@@ -949,22 +1026,7 @@ export class PDFStudioView extends ItemView {
       sourcePath: file.path,
     });
 
-    // 2. Render fresh clean DOM into offscreen staging scratch container
-    this.stagingContainerEl.empty();
-    const scratchEl = this.stagingContainerEl.createDiv();
-
-    await MarkdownRenderer.render(
-      this.app,
-      processedMarkdown,
-      scratchEl,
-      file.path,
-      this,
-    );
-
-    // 3. Wait for math, fonts, and third-party plugins to settle
-    await waitForDomSettled(scratchEl);
-
-    // 4. Calculate page boundaries based on settings
+    // 2. Calculate page limits early for batched layout read
     const dimensions = PAGE_FORMATS_MM[this.plugin.settings.pageFormat];
     const limits = calculatePageLimits(
       dimensions,
@@ -972,43 +1034,174 @@ export class PDFStudioView extends ItemView {
       this.containerEl.ownerDocument,
     );
 
-    // 5. Run virtual pagination engine connected to staging DOM for accurate measurement
-    const paginationResult: PaginationResult = paginate(
-      scratchEl,
-      limits,
-      this.stagingContainerEl,
-      this.containerEl.ownerDocument,
-    );
+    // 3. Isolated ephemeral render component
+    const renderComponent = new Component();
+    this.addChild(renderComponent);
 
-    // 6. Atomic twin-container swap: replace visible pages while preserving scroll position
-    const isSameFile = file.path === this.lastRenderedFilePath;
-    const previousScrollTop =
-      isSameFile && this.scrollContainerEl
-        ? this.scrollContainerEl.scrollTop
-        : 0;
-    const previousScrollLeft =
-      isSameFile && this.scrollContainerEl
-        ? this.scrollContainerEl.scrollLeft
-        : 0;
-    this.pagesContainerEl.empty();
+    // 4. Render into isolated staging container per pipeline pass
+    const runStagingEl = this.stagingContainerEl.createDiv();
+    try {
+      const scratchEl = runStagingEl.createDiv();
+      scratchEl.style.width = `${limits.contentWidthPx}px`;
+      scratchEl.style.boxSizing = "border-box";
 
-    while (paginationResult.container.firstChild) {
-      this.pagesContainerEl.appendChild(paginationResult.container.firstChild);
+      await MarkdownRenderer.render(
+        this.app,
+        processedMarkdown,
+        scratchEl,
+        file.path,
+        renderComponent,
+      );
+      if (seq !== this.renderSeq) {
+        renderComponent.unload();
+        this.removeChild(renderComponent);
+        return;
+      }
+
+      // 5. Wait for math, fonts, and third-party plugins to settle
+      await waitForDomSettled(scratchEl);
+      if (seq !== this.renderSeq) {
+        renderComponent.unload();
+        this.removeChild(renderComponent);
+        return;
+      }
+
+      // 6. Run virtual pagination engine with time-slicing and cancellation token
+      const paginationResult: PaginationResult = await paginate(
+        scratchEl,
+        limits,
+        runStagingEl,
+        this.containerEl.ownerDocument,
+        10,
+        () => seq !== this.renderSeq,
+      );
+      if (seq !== this.renderSeq) {
+        renderComponent.unload();
+        this.removeChild(renderComponent);
+        return;
+      }
+
+      // 7. Atomic twin-container swap and cache state update
+      const isSameFile = file.path === this.lastRenderedFilePath;
+      const previousScrollTop =
+        isSameFile && this.scrollContainerEl
+          ? this.scrollContainerEl.scrollTop
+          : 0;
+      const previousScrollLeft =
+        isSameFile && this.scrollContainerEl
+          ? this.scrollContainerEl.scrollLeft
+          : 0;
+
+      if (!isSameFile) {
+        this.detachCurrentViewToCache();
+      } else if (this.currentRenderComponent) {
+        this.currentRenderComponent.unload();
+        this.removeChild(this.currentRenderComponent);
+      }
+
+      const staleEntry = this.viewCache.get(file.path);
+      if (staleEntry && staleEntry.component !== renderComponent) {
+        staleEntry.component.unload();
+        this.removeChild(staleEntry.component);
+      }
+
+      this.pagesContainerEl.empty();
+      while (paginationResult.container.firstChild) {
+        this.pagesContainerEl.appendChild(
+          paginationResult.container.firstChild,
+        );
+      }
+
+      this.currentRenderComponent = renderComponent;
+      this.pendingFilePath = file.path;
+      this.lastRenderedFilePath = file.path;
+      this.lastRenderedText = rawMarkdown;
+      this.lastRenderedConfigSignature = currentConfig;
+      this.totalPagesCount = paginationResult.totalPages;
+      this.currentPageNumber = 1;
+
+      const cacheEntry: CachedPreviewState = {
+        filePath: file.path,
+        mtime: file.stat.mtime,
+        rawMarkdown,
+        configSignature: currentConfig,
+        pagesFragment: this.containerEl.ownerDocument.createDocumentFragment(),
+        totalPages: paginationResult.totalPages,
+        currentPageNumber: 1,
+        scrollTop: previousScrollTop,
+        scrollLeft: previousScrollLeft,
+        component: renderComponent,
+      };
+      this.setCacheEntry(file.path, cacheEntry);
+
+      this.updatePageIndicator();
+      this.applyZoom();
+
+      if (this.scrollContainerEl) {
+        this.scrollContainerEl.scrollTop = previousScrollTop;
+        this.scrollContainerEl.scrollLeft = previousScrollLeft;
+      }
+      this.onContainerScroll();
+    } finally {
+      runStagingEl.remove();
     }
+  }
 
-    this.lastRenderedFilePath = file.path;
+  private detachCurrentViewToCache(): void {
+    if (!this.lastRenderedFilePath) return;
+    const cached = this.viewCache.get(this.lastRenderedFilePath);
+    if (!cached) return;
 
-    // 7. Update state, indicator and zoom
-    this.lastRenderedText = rawMarkdown;
-    this.lastRenderedConfigSignature = currentConfig;
-    this.totalPagesCount = paginationResult.totalPages;
-    this.currentPageNumber = 1;
-    this.updatePageIndicator();
-    this.applyZoom();
-
-    if (this.scrollContainerEl) {
-      this.scrollContainerEl.scrollTop = previousScrollTop;
-      this.scrollContainerEl.scrollLeft = previousScrollLeft;
+    while (this.pagesContainerEl.firstChild) {
+      cached.pagesFragment.appendChild(this.pagesContainerEl.firstChild);
     }
+    cached.scrollTop = this.scrollContainerEl
+      ? this.scrollContainerEl.scrollTop
+      : 0;
+    cached.scrollLeft = this.scrollContainerEl
+      ? this.scrollContainerEl.scrollLeft
+      : 0;
+    cached.currentPageNumber = this.currentPageNumber;
+    cached.totalPages = this.totalPagesCount;
+  }
+
+  private setCacheEntry(key: string, state: CachedPreviewState): void {
+    if (this.viewCache.has(key)) {
+      this.viewCache.delete(key);
+    }
+    this.viewCache.set(key, state);
+
+    if (this.viewCache.size > MAX_VIEW_CACHE_ENTRIES) {
+      const oldestKey = this.viewCache.keys().next().value;
+      if (oldestKey) {
+        const oldestEntry = this.viewCache.get(oldestKey);
+        if (oldestEntry) {
+          oldestEntry.component.unload();
+          this.removeChild(oldestEntry.component);
+        }
+        this.viewCache.delete(oldestKey);
+      }
+    }
+  }
+
+  public clearCache(): void {
+    for (const entry of this.viewCache.values()) {
+      entry.component.unload();
+      this.removeChild(entry.component);
+    }
+    this.viewCache.clear();
+    this.currentRenderComponent = null;
+    this.pendingFilePath = "";
+    this.lastRenderedFilePath = "";
+    this.lastRenderedText = "";
+    this.lastRenderedConfigSignature = "";
+  }
+
+  public getCacheSize(): number {
+    return this.viewCache.size;
+  }
+
+  public hasCached(filePath: string): boolean {
+    return this.viewCache.has(filePath);
   }
 }

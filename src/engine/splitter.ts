@@ -262,7 +262,13 @@ export function splitTable(
   maxBottomPx: number,
   pageTopPx: number,
 ): SplitResult | null {
-  const rows = Array.from(table.querySelectorAll("tbody tr, tr"));
+  const tbodyRows = Array.from(table.querySelectorAll("tbody > tr"));
+  const rows =
+    tbodyRows.length > 0
+      ? tbodyRows
+      : Array.from(table.querySelectorAll("tr")).filter(
+          (tr) => !tr.closest("thead, tfoot"),
+        );
   if (rows.length <= 1) {
     return null; // A table with 1 or 0 body rows cannot be meaningfully split
   }
@@ -394,7 +400,7 @@ export function splitList(
  * @param pageTopPx - Bounding top coordinate of the current virtual page.
  * @returns {@link SplitResult} containing partitioned head and tail, or `null` if no text fits.
  */
-function splitTextElement(
+export function splitTextElement(
   element: HTMLElement,
   maxBottomPx: number,
   pageTopPx: number,
@@ -472,6 +478,12 @@ function splitTextElement(
     const lastNewline = text.lastIndexOf("\n", bestOffset);
     if (lastNewline !== -1 && lastNewline > 0) {
       bestOffset = lastNewline + 1;
+    }
+  } else if (!isPre && bestOffset > 0 && bestOffset < totalLength) {
+    // Snap prose text to whitespace to prevent bisecting mid-word
+    const lastSpace = text.slice(0, bestOffset).search(/\s\S*$/);
+    if (lastSpace > 0) {
+      bestOffset = lastSpace + 1;
     }
   }
 

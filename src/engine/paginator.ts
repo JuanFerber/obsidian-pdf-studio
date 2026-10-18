@@ -8,7 +8,7 @@
  * - Delegates overflowing nodes to {@link splitElementAtOverflow} for semantic bisection.
  */
 
-import type { PageLimitsPx } from "@/engine/dom-utils";
+import { type PageLimitsPx, waitForNextFrame } from "@/engine/dom-utils";
 import {
   isCodeBlock,
   isUnsplittable,
@@ -66,19 +66,13 @@ function createVirtualPage(
   pageEl.style.width = `${limits.pageWidthPx}px`;
   pageEl.style.minHeight = `${limits.pageHeightPx}px`;
   pageEl.style.maxHeight = `${limits.pageHeightPx}px`;
-  pageEl.style.position = "relative";
-  pageEl.style.boxSizing = "border-box";
-  pageEl.style.overflow = "hidden";
 
   const contentEl = doc.createElement("div");
   contentEl.classList.add("pdf-page-content");
-  contentEl.style.position = "absolute";
   contentEl.style.top = `${limits.marginTopPx}px`;
   contentEl.style.left = `${limits.marginLeftPx}px`;
   contentEl.style.width = `${limits.contentWidthPx}px`;
   contentEl.style.height = `${limits.contentHeightPx}px`;
-  contentEl.style.boxSizing = "border-box";
-  contentEl.style.overflow = "hidden";
 
   pageEl.appendChild(contentEl);
 
@@ -134,14 +128,16 @@ function isLeadInElement(el: HTMLElement | null): boolean {
  * @param doc - Document context supporting primary and popout Obsidian windows.
  * @returns Fully populated {@link PaginationResult} containing virtual page nodes and count.
  */
-export function paginate(
+export async function paginate(
   sourceContainer: HTMLElement,
   limits: PageLimitsPx,
   hostContainer?: HTMLElement,
   doc: Document = typeof activeDocument !== "undefined"
     ? activeDocument
     : document,
-): PaginationResult {
+  maxFrameBudgetMs = 10,
+  shouldCancel?: () => boolean,
+): Promise<PaginationResult> {
   const pages: VirtualPage[] = [];
   const rootContainer = doc.createElement("div");
   rootContainer.classList.add("pdf-pages-container");
@@ -156,13 +152,19 @@ export function paginate(
   pages.push(currentPage);
   rootContainer.appendChild(currentPage.pageEl);
 
-  // Clone elements to maintain strict immutability of the source container
-  const children = Array.from(sourceContainer.children).map((child) =>
-    child.cloneNode(true),
-  ) as HTMLElement[];
+  // Consume elements directly from scratchpad to avoid mass-cloning overhead
+  const children = Array.from(sourceContainer.children) as HTMLElement[];
 
+  let lastYieldTime = performance.now();
   let i = 0;
   while (i < children.length) {
+    if (performance.now() - lastYieldTime > maxFrameBudgetMs) {
+      await waitForNextFrame();
+      if (shouldCancel?.()) {
+        break;
+      }
+      lastYieldTime = performance.now();
+    }
     const element = children[i];
     if (!element) {
       i++;
