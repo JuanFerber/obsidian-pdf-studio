@@ -206,6 +206,7 @@ npm run dev
         ├── pdf-view-cache.test.ts # Multi-tab LRU cache, race shielding, and sandboxing tests
         ├── preprocessor.test.ts # Directive translation and code block shielding tests
         └── splitter.test.ts # Bisection unit tests (tables, lists, code fences, prose)
+```
 
 ---
 
@@ -220,4 +221,3 @@ npm run dev
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-```
