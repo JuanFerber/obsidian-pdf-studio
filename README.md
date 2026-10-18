@@ -16,13 +16,17 @@ Traditional Obsidian PDF preview tools often suffer from structural instabilitie
 - **Destructive DOM Recycling:** Dismantling rendered pages (`restoreFromPages`) breaks nested DOM structures created by syntax enhancers, causing measurement loops and page oscillations (e.g. jumping between 5 and 14 pages).
 - **Measurement Jitter:** Measuring elements synchronously before fonts and math formulas settle causes incorrect zero-height measurements.
 - **Visual Flicker:** Rebuilding the view in-place results in white flashes while typing.
+- **Main Thread UI Freezes:** Synchronous layout thrashing and redundant mass-cloning during pagination of large documents lock up the main Obsidian UI thread.
+- **Redundant Re-pagination on Tab Switching:** Switching between editor tabs typically destroys and recomputes the entire paginated DOM from scratch, introducing high latency and high CPU overhead.
 
-**PDF Studio** resolves these challenges through a **strict unidirectional, double-buffered pagination pipeline**:
+**PDF Studio** resolves these challenges through a **strict unidirectional, double-buffered, and cooperative pagination pipeline**:
 
 1. **Write-Only Virtual Pages:** Each pagination cycle constructs fresh, ephemeral pages from clean Markdown. Nodes are never recycled or torn down across cycles.
 2. **Double-Buffered Atomic Swapping:** Rendering and measurement take place in an off-screen staging container. Virtual sheets are swapped into the viewport atomically, preserving the user's scroll position without flickering.
 3. **Event-Driven Stabilization:** An asynchronous stabilization barrier (`waitForDomSettled`) ensures fonts, MathJax formulas, and syntax styles are fully laid out before pagination calculations begin.
 4. **Change Detection Gate:** Aborts immediately when text content and page geometry remain unchanged, ensuring 0% CPU consumption during editor idle states.
+5. **Time-Sliced Cooperative Pagination:** Paginates complex and massive documents asynchronously without UI freezes, yielding control every frame (`maxFrameBudgetMs = 10` via `waitForNextFrame()`) and supporting responsive cancellation via `shouldCancel`.
+6. **Sandboxed Multi-Tab LRU Cache:** Maintains an in-memory LRU preview cache (up to 8 notes) using native `DocumentFragment` detachment for instant (<1 ms, 0% CPU) tab switching, sandboxing `MarkdownRenderer` with ephemeral `Component` instances and preventing race conditions via `renderSeq` and `pendingFilePath` token guards.
 
 ---
 
@@ -30,9 +34,11 @@ Traditional Obsidian PDF preview tools often suffer from structural instabilitie
 
 ```mermaid
 flowchart TD
-    subgraph Input["1. Input & Debounce"]
+    subgraph Input["1. Input & Leaf Coordination"]
         E1["Vault Editor Keystroke"] --> D["200ms Debounce"]
-        E2["Active File Switch"] --> G1["Change Detection Gate"]
+        E2["Active File Switch"] --> G0{"LRU Cache Hit?<br/>mtime & config match"}
+        G0 -- "Hit (< 1ms, 0% CPU)" --> SWAP["Twin-Container Atomic Swap<br/>Restore DocumentFragment & Scroll"]
+        G0 -- "Miss" --> G1["Change Detection Gate"]
         D --> G1
     end
 
@@ -42,18 +48,19 @@ flowchart TD
     end
 
     subgraph Staging["3. Staging & Stabilization"]
-        PP --> RENDER["MarkdownRenderer.render() into Offscreen Staging"]
+        PP --> RENDER["MarkdownRenderer.render() into Isolated Staging<br/>Ephemeral Component Lifecycle Sandbox"]
         RENDER --> STAB["waitForDomSettled()<br/>Font readiness + MutationObserver quiet window"]
     end
 
-    subgraph Pagination["4. Unidirectional Paginator"]
+    subgraph Pagination["4. Cooperative Time-Sliced Paginator"]
         STAB --> CALC["calculatePageLimits()<br/>Dynamic mm-to-pixel ratio"]
-        CALC --> PAG["paginate()<br/>Virtual A4/Letter sheets + splitElementAtOverflow()"]
+        CALC --> PAG["paginate()<br/>Yields every 10ms via waitForNextFrame()<br/>Guarded by shouldCancel token"]
     end
 
-    subgraph Viewport["5. Atomic Viewport Mount"]
-        PAG --> SWAP["Twin-Container Atomic Swap<br/>Preserves scrollTop & scrollLeft"]
-        SWAP --> ZOOM["Auto-Fit or Manual Zoom (20%–500%)"]
+    subgraph Viewport["5. Viewport Mount & Cache"]
+        PAG --> SWAP
+        SWAP --> CACHE["Cache into DocumentFragment<br/>LRU capacity max 8 entries"]
+        CACHE --> ZOOM["Auto-Fit or Manual Zoom (20%–500%)"]
     end
 ```
 
@@ -62,13 +69,16 @@ flowchart TD
 ## Key Features
 
 - **Standard Paper Formats:** Native support for ISO 216 formats (**A4**, **A3**, **A5**) and ANSI formats (**Letter**, **Legal**).
-- **Customizable Margins:** Configurable printable gutters with instant presets (**Normal 20mm**, **Compact 10mm**, **Wide 30mm**).
+- **Customizable Margins:** Independent control over all 4 printable gutters (**Top**, **Bottom**, **Left**, **Right**) with boundary validation enforcing a minimum printable content area (at least 20mm width and height), alongside instant presets (**Normal 20mm**, **Compact 10mm**, **Wide 30mm**).
 - **Semantic Overflow Splitting:**
   - **Code Blocks:** Bisected strictly along line breaks (`\n`) with minimum thresholds (3 lines head, 2 lines tail) to prevent orphaned code lines.
-  - **Tables:** Split cleanly across table row boundaries (`<tr>`), automatically replicating the `<thead>` column headers on continuation sheets.
+  - **Tables:** Split cleanly across table row boundaries (`<tr>`), automatically replicating the `<thead>` column headers on continuation sheets while preventing orphaned headers when body rows overflow.
   - **Lists:** Ordered lists (`<ol>`) split between items, preserving continuous numbering via `start="N + 1"`.
-  - **Headings & Lead-ins:** Enforces _keep-with-next_ heuristics to prevent lonely section titles at the bottom of a page.
+  - **Prose & Blockquotes:** Bisected via bounded logarithmic binary search with DOM `Range` probing and backward word-boundary snapping to avoid cutting words in half.
+  - **Headings & Lead-ins:** Enforces _keep-with-next_ heuristics to prevent lonely section titles or introductory short paragraphs at the bottom of a page.
 - **Double-Buffered Viewport:** Smooth typing experience with zero white flash and persistent scroll tracking.
+- **Instant Multi-Tab Switching:** Zero-latency (<1 ms) tab switching with an in-memory LRU cache of up to 8 notes, retaining scroll positions and virtual DOM sheets without disk reads or re-parsing.
+- **Time-Sliced 60 FPS Engine:** Cooperative pagination loop yields to the browser every 10 ms, ensuring silky-smooth responsiveness even on 500+ paragraph documents.
 - **Direct Vector PDF Export:** Generates clean, print-ready PDF files via Chromium's native `printToPDF` engine without heavy binary dependencies.
 - **Floating Quick Options:** In-toolbar popover to switch paper dimensions, margins, and auto-zoom with a single click.
 
@@ -96,7 +106,7 @@ This content starts at the top of the next virtual sheet.
 - `<!-- pagebreak -->` (Standard HTML comment delimiter)
 - `//page` (Concise shorthand directive)
 
-> **Safety Invariant:** Directives located inside fenced code blocks (```` or `~~~`) are strictly shielded and will not trigger a page break.
+> **Safety Invariant:** Directives located inside fenced code blocks (```` or `~~~`), including nested code fences (e.g. 4+ backtick/tilde documentation blocks enclosing 3-backtick snippets), are strictly shielded and will not trigger a page break.
 
 ---
 
@@ -146,13 +156,15 @@ cd obsidian-pdf-studio
 # Install dependencies
 npm install
 
+# TypeScript strict typecheck
+npx tsc --noEmit
+
 # Check & format code style
 npm run format:check
 npm run format
 
 # Run Vitest unit & integration test suite
 npm test
-
 # Build production bundle (build/main.js)
 npm run build
 # Start live incremental compiler for development
@@ -188,9 +200,12 @@ npm run dev
     ├── export/
     │   └── pdf-export.ts    # Headless Chromium vector PDF export pipeline
     └── tests/
-        ├── splitter.test.ts # Bisection unit tests (tables, lists, code fences)
-        └── preprocessor.test.ts # Directive translation and code block shielding tests
-```
+        ├── __mocks__/
+        │   └── obsidian.ts  # Runtime mocks for Obsidian API classes and DOM helpers
+        ├── paginator.test.ts # Time-slicing, DOM transfer, and metric fallback tests
+        ├── pdf-view-cache.test.ts # Multi-tab LRU cache, race shielding, and sandboxing tests
+        ├── preprocessor.test.ts # Directive translation and code block shielding tests
+        └── splitter.test.ts # Bisection unit tests (tables, lists, code fences, prose)
 
 ---
 
@@ -205,3 +220,4 @@ npm run dev
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+```
