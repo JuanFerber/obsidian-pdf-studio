@@ -102,9 +102,7 @@ describe("PDFStudioView LRU Preview Cache & Sandboxing", () => {
     const renderSpy = vi.spyOn(MarkdownRenderer, "render");
     renderSpy.mockClear();
     readSpy.mockClear();
-    const startTime = performance.now();
     await view.triggerRender(false);
-    const elapsed = performance.now() - startTime;
 
     expect(readSpy).not.toHaveBeenCalled();
     expect(renderSpy).not.toHaveBeenCalled();

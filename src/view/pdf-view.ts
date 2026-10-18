@@ -937,19 +937,21 @@ export class PDFStudioView extends ItemView {
   }
 
   /**
-   * Core 7-stage unidirectional rendering pipeline for PDF Studio preview.
+   * Core 8-stage unidirectional rendering pipeline for PDF Studio preview.
    *
-   * Lifecycle Execution Stages:
-   * 1. **Change Gate:** Compares current raw Markdown and geometric configuration with cached
-   *    values. Aborts immediately if no changes are detected (0% CPU at idle).
-   * 2. **Markdown Preprocessing:** Directives (\pagebreak, //page) are translated into HTML sentinels
-   *    while fenced code blocks remain shielded.
-   * 3. **Clean DOM Compilation:** Compiles Markdown into an off-screen staging scratch container.
-   * 4. **Mutation Stabilization:** Awaits {@link waitForDomSettled} for fonts, MathJax, and styling to finish.
-   * 5. **Metric Calculation:** Translates paper format and margins into exact screen pixel limits.
-   * 6. **Unidirectional Pagination:** Assembles virtual sheets and bisects overflowing content.
-   * 7. **Atomic Twin-Container Swap:** Replaces visible `.pdf-pages-container` child nodes in a single
-   *    pass, eliminating flicker and deterministically preserving user scroll positions.
+   * Execution Stages:
+   * 1. **LRU Cache Hit Gate:** Checks `viewCache` for matching file path, mtime, and geometry signature.
+   *    On hit, performs instant (<1ms) DOM fragment swap with 0 disk reads and 0 re-renders.
+   * 2. **Disk Ingestion & Change Detection Gate:** Ingests raw Markdown via `vault.read`. Aborts if
+   *    both text and geometric configuration match the active display (0% CPU idle).
+   * 3. **Markdown Preprocessing:** Converts authoring break directives into sentinels while shielding code fences.
+   * 4. **Early Metric Boundary Computation:** Calculates printable limits early to configure scratch container width.
+   * 5. **Sandboxed Clean DOM Compilation:** Compiles Markdown into an isolated staging container with an ephemeral
+   *    {@link Component} lifecycle boundary.
+   * 6. **Mutation Stabilization:** Awaits {@link waitForDomSettled} for external plugins, web fonts, and MathJax to rest.
+   * 7. **Cooperative Time-Sliced Pagination:** Assembles virtual sheets yielding control every 10ms with sequence cancellation.
+   * 8. **Atomic Twin-Container Swap & Cache Registration:** Mounts pages into viewport, updates scroll indicators,
+   *    and stores state in `viewCache`.
    *
    * @param force - When true, re-executes pipeline even if source text matches cache.
    */
@@ -1147,6 +1149,10 @@ export class PDFStudioView extends ItemView {
     }
   }
 
+  /**
+   * Detaches the currently rendered visible page nodes from `pagesContainerEl` into their
+   * designated LRU cache entry's `pagesFragment`, preserving user scroll offsets and page counts.
+   */
   private detachCurrentViewToCache(): void {
     if (!this.lastRenderedFilePath) return;
     const cached = this.viewCache.get(this.lastRenderedFilePath);
@@ -1165,6 +1171,13 @@ export class PDFStudioView extends ItemView {
     cached.totalPages = this.totalPagesCount;
   }
 
+  /**
+   * Inserts or updates an entry in the LRU preview cache, enforcing the maximum capacity ceiling.
+   * Evicted entries automatically unload their isolated child component to prevent memory leaks.
+   *
+   * @param key - Vault-relative file path of the note.
+   * @param state - Complete snapshot of the rendered virtual pages and viewport geometry.
+   */
   private setCacheEntry(key: string, state: CachedPreviewState): void {
     if (this.viewCache.has(key)) {
       this.viewCache.delete(key);
@@ -1184,6 +1197,9 @@ export class PDFStudioView extends ItemView {
     }
   }
 
+  /**
+   * Completely purges the LRU preview cache, deterministically unloading all cached child components.
+   */
   public clearCache(): void {
     for (const entry of this.viewCache.values()) {
       entry.component.unload();
@@ -1197,10 +1213,18 @@ export class PDFStudioView extends ItemView {
     this.lastRenderedConfigSignature = "";
   }
 
+  /**
+   * Returns the current number of active cached note entries in the preview cache.
+   */
   public getCacheSize(): number {
     return this.viewCache.size;
   }
 
+  /**
+   * Checks whether a specific note file path is currently cached in memory.
+   *
+   * @param filePath - Vault-relative file path to query.
+   */
   public hasCached(filePath: string): boolean {
     return this.viewCache.has(filePath);
   }

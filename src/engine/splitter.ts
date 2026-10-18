@@ -394,6 +394,7 @@ export function splitList(
  * - Employs a DOM Range probe to find the optimal character cut point.
  * - Enforces an iteration limit of 15 ($\lceil\log_2(32768)\rceil = 15$) to prevent infinite search loops.
  * - For `<pre>` elements reaching this fallback, cuts are snapped backwards to the nearest newline (`\n`).
+ * - For prose elements (`<p>`), cuts are snapped backwards to the nearest whitespace to avoid mid-word truncation.
  *
  * @param element - Text container element exceeding printable limits.
  * @param maxBottomPx - Printable threshold in viewport pixels.

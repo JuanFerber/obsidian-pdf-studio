@@ -2,7 +2,7 @@
  * @fileoverview Floating quick-settings popover menu for the PDF Studio preview toolbar.
  *
  * Implements a lightweight, anchored dropdown menu allowing users to rapidly toggle
- * page formats (A4, Letter, Legal, A5), margin presets (Normal, Compact, Wide), and auto-zoom
+ * page formats (A4, Letter, Legal, A3, A5), margin presets (Normal, Compact, Wide), and auto-zoom
  * directly within the live preview panel without navigating away from their note.
  */
 
