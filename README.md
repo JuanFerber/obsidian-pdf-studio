@@ -76,6 +76,9 @@ flowchart TD
   - **Lists:** Ordered lists (`<ol>`) split between items, preserving continuous numbering via `start="N + 1"`.
   - **Prose & Blockquotes:** Bisected via bounded logarithmic binary search with DOM `Range` probing and backward word-boundary snapping to avoid cutting words in half.
   - **Headings & Lead-ins:** Enforces _keep-with-next_ heuristics to prevent lonely section titles or introductory short paragraphs at the bottom of a page.
+- **Proportional Diagram & Media Fitting:** Automatically fits Mermaid charts, SVGs, images, and canvas elements to physical page margins with aspect-ratio-preserving `viewBox` normalization.
+- **MathJax Formula Auto-Scaling:** Detects wide LaTeX equations (`mjx-container`, `.math-block`) that exceed printable column width and scales them down proportionally without margin clipping.
+- **Print-Faithful Code Wrapping:** Formats code blocks with `white-space: pre-wrap` and overflow wrapping, eliminating unprintable horizontal scrollbars and text truncation on paper.
 - **Double-Buffered Viewport:** Smooth typing experience with zero white flash and persistent scroll tracking.
 - **Instant Multi-Tab Switching:** Zero-latency (<1 ms) tab switching with an in-memory LRU cache of up to 8 notes, retaining scroll positions and virtual DOM sheets without disk reads or re-parsing.
 - **Time-Sliced 60 FPS Engine:** Cooperative pagination loop yields to the browser every 10 ms, ensuring silky-smooth responsiveness even on 500+ paragraph documents.

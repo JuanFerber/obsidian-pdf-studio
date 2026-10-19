@@ -50,8 +50,10 @@ const UNSPLITTABLE_TAGS: Record<string, true> = {
  *
  * Invariants:
  * - All heading levels (H1-H6) are indivisible to uphold editorial hierarchy.
- * - Graphical media elements (IMG, SVG, CANVAS, VIDEO) are indivisible.
- * - Math blocks (`.math-block`) and Obsidian frontmatter metadata (`.frontmatter`) remain atomic.
+ * - Graphical media elements (IMG, SVG, CANVAS, VIDEO) and Mermaid diagrams remain atomic.
+ * - Math blocks (`.math-block`, display `mjx-container`) and frontmatter remain atomic.
+ * - Splittable containers (`TABLE`, `UL`, `OL`, and valid code blocks) are explicitly excluded,
+ *   even if they contain UI icon SVGs (e.g. copy button icons or list collapse triangles).
  *
  * @param element - The candidate HTML element undergoing overflow evaluation.
  * @returns True if the element must remain undivided and transition intact to the next page.
