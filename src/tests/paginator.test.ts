@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { paginate } from "@/engine/paginator";
-import { calculatePageLimits } from "@/engine/dom-utils";
+import {
+  calculatePageLimits,
+  fitElementsToPageBounds,
+} from "@/engine/dom-utils";
 import type { PageLimitsPx } from "@/engine/dom-utils";
 
 describe("Paginator & DOM Metric Engine", () => {
@@ -144,5 +147,51 @@ describe("Paginator & DOM Metric Engine", () => {
     );
     expect(result.totalPages).toBeGreaterThanOrEqual(1);
     expect(result.container.querySelectorAll("p").length).toBe(500);
+  });
+
+  it("fitElementsToPageBounds scales down oversized SVGs and assigns missing viewBox", () => {
+    const container = document.createElement("div");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    container.appendChild(svg);
+
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+      width: 1440,
+      height: 900,
+      top: 0,
+      bottom: 900,
+      left: 0,
+      right: 1440,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fitElementsToPageBounds(container, dummyLimits);
+
+    // viewBox established
+    expect(svg.getAttribute("viewBox")).toBe("0 0 1440 900");
+    // scaled down to contentWidthPx (720px)
+    expect(svg.style.width).toBe("720px");
+    expect(svg.style.maxWidth).toBe("100%");
+  });
+
+  it("fitElementsToPageBounds scales down wide MathJax equations", () => {
+    const container = document.createElement("div");
+    const mathBlock = document.createElement("div");
+    mathBlock.classList.add("math-block");
+    const mjxMath = document.createElement("mjx-math");
+    mathBlock.appendChild(mjxMath);
+    container.appendChild(mathBlock);
+
+    // scrollWidth = 1440px (> 720px contentWidthPx)
+    Object.defineProperty(mathBlock, "scrollWidth", {
+      configurable: true,
+      value: 1440,
+    });
+
+    fitElementsToPageBounds(container, dummyLimits);
+
+    expect(mjxMath.style.transform).toBe("scale(0.5)");
+    expect(mjxMath.style.transformOrigin).toBe("left center");
   });
 });

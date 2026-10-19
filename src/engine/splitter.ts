@@ -50,16 +50,35 @@ const UNSPLITTABLE_TAGS: Record<string, true> = {
  *
  * Invariants:
  * - All heading levels (H1-H6) are indivisible to uphold editorial hierarchy.
- * - Graphical media elements (IMG, SVG, CANVAS, VIDEO) are indivisible.
- * - Math blocks (`.math-block`) and Obsidian frontmatter metadata (`.frontmatter`) remain atomic.
+ * - Graphical media elements (IMG, SVG, CANVAS, VIDEO) and Mermaid diagrams remain atomic.
+ * - Math blocks (`.math-block`, display `mjx-container`) and frontmatter remain atomic.
+ * - Splittable containers (`TABLE`, `UL`, `OL`, and valid code blocks) are explicitly excluded,
+ *   even if they contain UI icon SVGs (e.g. copy button icons or list collapse triangles).
  *
  * @param element - The candidate HTML element undergoing overflow evaluation.
  * @returns True if the element must remain undivided and transition intact to the next page.
  */
 export function isUnsplittable(element: HTMLElement): boolean {
-  if (UNSPLITTABLE_TAGS[element.tagName.toUpperCase()] === true) return true;
+  const tag = element.tagName.toUpperCase();
+  if (UNSPLITTABLE_TAGS[tag] === true) return true;
   if (element.classList.contains("math-block")) return true;
   if (element.classList.contains("frontmatter")) return true;
+  if (
+    element.classList.contains("mermaid") ||
+    element.classList.contains("block-language-mermaid")
+  ) {
+    return true;
+  }
+  if (tag === "TABLE" || tag === "UL" || tag === "OL" || isCodeBlock(element)) {
+    return false;
+  }
+  if (
+    element.querySelector(
+      "svg:not(.svg-icon), img, canvas, video, iframe, .math-block, mjx-container[display='true']",
+    ) !== null
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -76,9 +95,15 @@ export function isCodeBlock(element: HTMLElement): boolean {
   const tag = element.tagName.toUpperCase();
   if (tag === "PRE") return true;
   if (
+    element.classList.contains("mermaid") ||
+    element.classList.contains("block-language-mermaid")
+  ) {
+    return false;
+  }
+  if (
     Array.from(element.classList).some((c) => c.startsWith("block-language-"))
   ) {
-    return true;
+    return element.querySelector("pre") !== null;
   }
   if (element.querySelector("pre") !== null) {
     // Avoid marking composite wrappers as code blocks if they contain diverse child tags
@@ -172,20 +197,47 @@ export function splitCodeBlock(
     return null;
   }
 
+  let headTarget: { node: Text; offset: number } | null = null;
   let headEndOffset = 0;
-  for (let l = 0; l < splitLine; l++) {
-    headEndOffset += rawLines[l]!.length;
-    if (l < splitLine - 1) {
-      headEndOffset += 1; // newline between lines in head
-    }
-  }
-  const tailStartOffset = headEndOffset + 1; // skip newline separating head and tail
 
-  const headTarget = findTextNodeAtOffset(element, headEndOffset);
-  if (!headTarget) {
+  while (splitLine >= 3) {
+    headEndOffset = 0;
+    for (let l = 0; l < splitLine; l++) {
+      headEndOffset += rawLines[l]!.length;
+      if (l < splitLine - 1) {
+        headEndOffset += 1; // newline between lines in head
+      }
+    }
+
+    headTarget = findTextNodeAtOffset(element, headEndOffset);
+    if (!headTarget) return null;
+
+    const probeRange = document.createRange();
+    probeRange.setStart(codeEl, 0);
+    probeRange.setEnd(headTarget.node, headTarget.offset);
+    let probeBottom = 0;
+    if (typeof probeRange.getBoundingClientRect === "function") {
+      try {
+        const rect = probeRange.getBoundingClientRect();
+        if (rect && rect.height > 0) {
+          probeBottom = rect.bottom - pageTopPx;
+        }
+      } catch {
+        probeBottom = 0;
+      }
+    }
+
+    if (probeBottom === 0 || probeBottom <= maxBottomPx) {
+      break;
+    }
+    splitLine--;
+  }
+
+  if (splitLine < 3 || rawLines.length - splitLine < 2 || !headTarget) {
     return null;
   }
 
+  const tailStartOffset = headEndOffset + 1; // skip newline separating head and tail
   const tail = element.cloneNode(true) as HTMLElement;
   tail.classList.add("pdf-split-continued");
 

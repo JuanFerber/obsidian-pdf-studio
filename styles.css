@@ -171,15 +171,66 @@
   font-weight: 600;
 }
 
-/* Code blocks styling on paper */
+/* Code blocks styling on paper: force line wrapping within page width */
 .pdf-page-content pre {
   background-color: #f6f8fa;
   border: 1px solid #e1e4e8;
   border-radius: 4px;
   padding: 12px;
-  overflow-x: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   font-family: var(--font-monospace, monospace);
   font-size: 0.9em;
+}
+
+.pdf-page-content pre code {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Mermaid diagrams and media: constrain strictly to printable width */
+.pdf-page-content .mermaid,
+.pdf-page-content .block-language-mermaid {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  box-sizing: border-box;
+  margin: 0.75rem 0;
+}
+
+.pdf-page-content .mermaid svg,
+.pdf-page-content .block-language-mermaid svg,
+.pdf-page-content svg,
+.pdf-page-content img,
+.pdf-page-content canvas {
+  max-width: 100% !important;
+  height: auto !important;
+  box-sizing: border-box;
+}
+
+/* LaTeX / MathJax containers */
+.pdf-page-content .math-block,
+.pdf-page-content mjx-container[display="true"] {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  margin: 0.75em 0;
+  text-align: center;
+}
+
+.pdf-page-content .math-inline,
+.pdf-page-content mjx-container:not([display="true"]) {
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 /* Toolbar Container */
 .pdf-studio-toolbar {
