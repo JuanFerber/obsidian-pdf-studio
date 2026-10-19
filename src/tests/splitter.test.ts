@@ -33,8 +33,12 @@ describe("Code Block Splitter & Pagination", () => {
 
     const blockLang = document.createElement("div");
     blockLang.classList.add("block-language-python");
+    blockLang.appendChild(document.createElement("pre"));
     expect(isCodeBlock(blockLang)).toBe(true);
 
+    const mermaidBlock = document.createElement("div");
+    mermaidBlock.classList.add("block-language-mermaid");
+    expect(isCodeBlock(mermaidBlock)).toBe(false);
     const containerWithPre = document.createElement("div");
     containerWithPre.appendChild(document.createElement("pre"));
     expect(isCodeBlock(containerWithPre)).toBe(true);
@@ -89,6 +93,102 @@ describe("Code Block Splitter & Pagination", () => {
     expect(result.tail.querySelector(".copy-code-button")).toBeNull();
     // Tail has continuation styling class
     expect(result.tail.classList.contains("pdf-split-continued")).toBe(true);
+  });
+
+  it("allows splitCodeBlock and classifies isUnsplittable as false when pre contains copy button with svg.svg-icon", () => {
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.textContent =
+      "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8";
+    pre.appendChild(code);
+
+    const copyBtn = document.createElement("button");
+    copyBtn.classList.add("copy-code-button");
+    const svgIcon = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg",
+    );
+    svgIcon.classList.add("svg-icon");
+    copyBtn.appendChild(svgIcon);
+    pre.appendChild(copyBtn);
+
+    // Verify isUnsplittable(pre) is false despite containing an SVG
+    expect(isUnsplittable(pre)).toBe(false);
+
+    vi.spyOn(pre, "getBoundingClientRect").mockReturnValue({
+      top: 100,
+      bottom: 340,
+      height: 240,
+      width: 700,
+      left: 0,
+      right: 700,
+      x: 0,
+      y: 100,
+      toJSON: () => {},
+    });
+
+    const result = splitCodeBlock(pre, 230, 0);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.head?.textContent).toBe("line 1\nline 2\nline 3\nline 4");
+    expect(result.tail.textContent).toBe("line 5\nline 6\nline 7\nline 8");
+  });
+
+  it("decrements splitLine when probeRange detects wrapped line overflow", () => {
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.textContent =
+      "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8";
+    pre.appendChild(code);
+    document.body.appendChild(pre);
+
+    vi.spyOn(pre, "getBoundingClientRect").mockReturnValue({
+      top: 100,
+      bottom: 340,
+      height: 240,
+      width: 700,
+      left: 0,
+      right: 700,
+      x: 0,
+      y: 100,
+      toJSON: () => {},
+    });
+
+    const originalGetBoundingClientRect = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = function (this: Range): DOMRect {
+      // If 4 lines (offset ~26), probe detects overflow (bottom = 250 > maxBottomPx 230)
+      // If 3 lines (offset ~20), probe fits (bottom = 180 <= maxBottomPx 230)
+      const isOver4Lines = this.endOffset > 21;
+      return {
+        top: 100,
+        bottom: isOver4Lines ? 250 : 180,
+        height: isOver4Lines ? 150 : 80,
+        width: 700,
+        left: 0,
+        right: 700,
+        x: 0,
+        y: 100,
+        toJSON: () => {},
+      };
+    };
+
+    // Mathematically 4 lines would be chosen, but probeRange forces step down to 3 lines
+    const result = splitCodeBlock(pre, 230, 0);
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result.head?.textContent).toBe("line 1\nline 2\nline 3");
+      expect(result.tail.textContent).toBe(
+        "line 4\nline 5\nline 6\nline 7\nline 8",
+      );
+    }
+
+    if (originalGetBoundingClientRect) {
+      Range.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    } else {
+      Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+    }
+    pre.remove();
   });
 
   it("preserves syntax highlighting tokens when splitting across page boundaries", () => {
@@ -558,6 +658,18 @@ describe("Code Block Splitter & Pagination", () => {
     const frontmatter = document.createElement("div");
     frontmatter.classList.add("frontmatter");
     expect(isUnsplittable(frontmatter)).toBe(true);
+
+    const mermaid = document.createElement("div");
+    mermaid.classList.add("block-language-mermaid");
+    expect(isUnsplittable(mermaid)).toBe(true);
+
+    const svgContainer = document.createElement("div");
+    svgContainer.appendChild(document.createElement("svg"));
+    expect(isUnsplittable(svgContainer)).toBe(true);
+
+    const mathJax = document.createElement("div");
+    mathJax.innerHTML = '<mjx-container display="true"></mjx-container>';
+    expect(isUnsplittable(mathJax)).toBe(true);
 
     const p = document.createElement("p");
     expect(isUnsplittable(p)).toBe(false);

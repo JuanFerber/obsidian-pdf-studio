@@ -18,7 +18,11 @@ import {
 } from "obsidian";
 import type { IPDFStudioPlugin } from "@/types";
 import { PAGE_FORMATS_MM } from "@/types";
-import { calculatePageLimits, waitForDomSettled } from "@/engine/dom-utils";
+import {
+  calculatePageLimits,
+  fitElementsToPageBounds,
+  waitForDomSettled,
+} from "@/engine/dom-utils";
 import { paginate, type PaginationResult } from "@/engine/paginator";
 import { preprocessMarkdown } from "@/engine/preprocessor";
 import { exportToPdf } from "@/export/pdf-export";
@@ -1043,7 +1047,10 @@ export class PDFStudioView extends ItemView {
     // 4. Render into isolated staging container per pipeline pass
     const runStagingEl = this.stagingContainerEl.createDiv();
     try {
-      const scratchEl = runStagingEl.createDiv();
+      const scratchEl = runStagingEl.createDiv({ cls: "pdf-page-content" });
+      scratchEl.style.position = "relative";
+      scratchEl.style.height = "auto";
+      scratchEl.style.overflow = "visible";
       scratchEl.style.width = `${limits.contentWidthPx}px`;
       scratchEl.style.boxSizing = "border-box";
 
@@ -1060,13 +1067,18 @@ export class PDFStudioView extends ItemView {
         return;
       }
 
-      // 5. Wait for math, fonts, and third-party plugins to settle
-      await waitForDomSettled(scratchEl);
+      // 5. Wait for math, fonts, and third-party plugins to settle (longer quiet window for Mermaid)
+      const hasMermaid =
+        scratchEl.querySelector(".block-language-mermaid, .mermaid") !== null;
+      await waitForDomSettled(scratchEl, hasMermaid ? { quietMs: 80 } : {});
       if (seq !== this.renderSeq) {
         renderComponent.unload();
         this.removeChild(renderComponent);
         return;
       }
+
+      // Proportional auto-scaling for Mermaid SVGs and MathJax equations before pagination
+      fitElementsToPageBounds(scratchEl, limits);
 
       // 6. Run virtual pagination engine with time-slicing and cancellation token
       const paginationResult: PaginationResult = await paginate(

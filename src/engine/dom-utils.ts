@@ -251,3 +251,66 @@ export async function waitForDomSettled(
   // 3. Single frame to allow the browser to compute the final layout pass
   await waitForNextFrame();
 }
+
+/**
+ * Fits wide MathJax equations and oversized Mermaid/SVG diagrams proportionally
+ * within the printable width and height of the virtual sheet.
+ *
+ * Operations:
+ * 1. SVGs (.mermaid, .block-language-mermaid, svg): Ensures viewBox is configured,
+ *    calculates proportional scale factor clamped to `contentWidthPx` and `contentHeightPx`,
+ *    and resizes element style width/height without distortion.
+ * 2. MathJax (mjx-container, .math-block): Detects horizontal overflow against `contentWidthPx`,
+ *    scaling down wide formulas via CSS transform scale with left-center transform origin.
+ *
+ * @param container - Rendered scratch DOM container hosting content elements.
+ * @param limits - Calculated printable page bounds in screen pixels.
+ */
+export function fitElementsToPageBounds(
+  container: HTMLElement,
+  limits: PageLimitsPx,
+): void {
+  // 1. Proportional scaling for Mermaid diagrams and generic SVGs (ignoring UI icons)
+  const svgs = container.querySelectorAll<SVGSVGElement>(
+    ".mermaid svg:not(.svg-icon), .block-language-mermaid svg:not(.svg-icon), svg:not(.svg-icon)",
+  );
+  for (const svg of Array.from(svgs)) {
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+
+    // Ensure viewBox is established so browser maintains aspect ratio upon scaling
+    if (!svg.getAttribute("viewBox")) {
+      svg.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
+    }
+
+    const maxAllowedW = limits.contentWidthPx;
+    const maxAllowedH = Math.max(100, limits.contentHeightPx - 16);
+    const scaleW = rect.width > maxAllowedW ? maxAllowedW / rect.width : 1;
+    const scaleH = rect.height > maxAllowedH ? maxAllowedH / rect.height : 1;
+    const scale = Math.min(scaleW, scaleH);
+
+    if (scale < 1) {
+      svg.style.width = `${Math.floor(rect.width * scale)}px`;
+      svg.style.height = `${Math.floor(rect.height * scale)}px`;
+      svg.style.maxWidth = "100%";
+    }
+  }
+
+  // 2. Proportional scale-down for wide MathJax LaTeX equations
+  const mathContainers = container.querySelectorAll<HTMLElement>(
+    "mjx-container, .math-block",
+  );
+  for (const mathEl of Array.from(mathContainers)) {
+    const scrollW = mathEl.scrollWidth;
+    if (scrollW > limits.contentWidthPx && limits.contentWidthPx > 0) {
+      const scale = limits.contentWidthPx / scrollW;
+      if (scale < 1) {
+        mathEl.style.textAlign = "left";
+      }
+      const innerMath = mathEl.querySelector<HTMLElement>("mjx-math") ?? mathEl;
+      innerMath.style.display = "inline-block";
+      innerMath.style.transform = `scale(${scale})`;
+      innerMath.style.transformOrigin = "left center";
+    }
+  }
+}
