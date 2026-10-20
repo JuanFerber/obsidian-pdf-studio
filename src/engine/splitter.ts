@@ -2,9 +2,12 @@
  * @fileoverview Semantic DOM bisection algorithms for overflowing content across virtual page boundaries.
  *
  * Implements type-aware splitting strategies for elements exceeding physical page limits:
+ * - Diagrams (`.mermaid`, `.block-language-mermaid`, `<svg>`): vertically sliced across page breaks with
+ *   full-width dashed cut borders (`#9ca3af`), bottom safety clearance, and negative viewport offset shifts.
  * - Code blocks (`<pre><code>`): bisected along newline boundaries (`\n`) with syntax token preservation
  *   and minimum line threshold guards (3 lines head, 2 lines tail).
- * - Tables (`<table>`): split at whole row (`<tr>`) boundaries while duplicating `<thead>` on continuation pages.
+ * - Tables (`<table>` or wrapper containers): split at whole row (`<tr>`) boundaries while duplicating `<thead>`
+ *   on continuation pages, preserving wrapper element hierarchy.
  * - Lists (`<ol>` / `<ul>`): split between `<li>` items with sequential counter preservation (`start="N + 1"`).
  * - Paragraphs (`<p>`) & quotes (`<blockquote>`): split via logarithmic binary search with `Range` geometry.
  * - Atomic elements: headings, images, and embeds are strictly preserved intact and transferred to the next page.
@@ -889,7 +892,7 @@ export function splitTextElement(
 
 /**
  * Universal dispatcher selecting and executing the optimal splitting strategy
- * for an overflowing element based on its DOM semantic tag.
+ * for an overflowing element based on its DOM semantic tag and classification.
  *
  * Preconditions:
  * - `element` must be attached to the active DOM or a staging measurement container.
@@ -897,11 +900,11 @@ export function splitTextElement(
  *
  * Dispatch Strategy:
  * 1. Checks atomic types via {@link isUnsplittable} (returns `null` immediately).
- * 2. Routes preformatted code blocks to {@link splitCodeBlock}.
- * 3. Routes `<table>` elements to {@link splitTable}.
- * 4. Routes `<ul>` and `<ol>` lists to {@link splitList}.
- * 5. Falls back to logarithmic bisection via {@link splitTextElement}.
- *
+ * 2. Routes Mermaid and SVG diagrams to {@link splitDiagram}.
+ * 3. Routes preformatted code blocks to {@link splitCodeBlock}.
+ * 4. Routes `<table>` and table wrapper containers to {@link splitTable}.
+ * 5. Routes `<ul>` and `<ol>` lists to {@link splitList}.
+ * 6. Falls back to logarithmic bisection via {@link splitTextElement}.
  * @param element - The HTML element exceeding `maxContentBottomPx`.
  * @param maxBottomPx - Printable threshold coordinate in pixels.
  * @param pageTopPx - Absolute top coordinate of the current virtual page.

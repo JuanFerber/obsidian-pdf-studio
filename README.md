@@ -71,12 +71,14 @@ flowchart TD
 - **Standard Paper Formats:** Native support for ISO 216 formats (**A4**, **A3**, **A5**) and ANSI formats (**Letter**, **Legal**).
 - **Customizable Margins:** Independent control over all 4 printable gutters (**Top**, **Bottom**, **Left**, **Right**) with boundary validation enforcing a minimum printable content area (at least 20mm width and height), alongside instant presets (**Normal 20mm**, **Compact 10mm**, **Wide 30mm**).
 - **Semantic Overflow Splitting:**
+  - **Diagrams & Charts:** Vertically slices tall Mermaid diagrams and SVGs across page boundaries using semantic height window slicing with full-width dashed cut borders (`#9ca3af`), bottom safety clearance, and negative viewport offset shifts.
   - **Code Blocks:** Bisected strictly along line breaks (`\n`) with minimum thresholds (3 lines head, 2 lines tail) to prevent orphaned code lines.
-  - **Tables:** Split cleanly across table row boundaries (`<tr>`), automatically replicating the `<thead>` column headers on continuation sheets while preventing orphaned headers when body rows overflow.
+  - **Tables:** Split cleanly across table row boundaries (`<tr>`) including container wrappers, automatically replicating the `<thead>` column headers on continuation sheets while preventing orphaned headers when body rows overflow.
   - **Lists:** Ordered lists (`<ol>`) split between items, preserving continuous numbering via `start="N + 1"`.
   - **Prose & Blockquotes:** Bisected via bounded logarithmic binary search with DOM `Range` probing and backward word-boundary snapping to avoid cutting words in half.
-  - **Headings & Lead-ins:** Enforces _keep-with-next_ heuristics to prevent lonely section titles or introductory short paragraphs at the bottom of a page.
-- **Proportional Diagram & Media Fitting:** Automatically fits Mermaid charts, SVGs, images, and canvas elements to physical page margins with aspect-ratio-preserving `viewBox` normalization.
+  - **Headings & Lead-ins:** Enforces eager bisection and keep-with-next cluster binding (up to 240 chars for `[H1..H6 + lead-in P]`) to prevent empty page gaps or lonely section titles at the bottom of a page.
+- **Proportional Diagram & Media Fitting:** Inspects intrinsic dimensions (`viewBox`, `maxWidth`, attributes) to automatically fit Mermaid charts, SVGs, images, and canvas elements to physical page margins without horizontal clipping or distortion.
+- **Wide Table Auto-Fitting:** Dynamically detects tables exceeding printable width, proportionally scaling font sizes down to 60%, compacting cell padding, and applying residual zoom to eliminate horizontal overflow.
 - **MathJax Formula Auto-Scaling:** Detects wide LaTeX equations (`mjx-container`, `.math-block`) that exceed printable column width and scales them down proportionally without margin clipping.
 - **Print-Faithful Code Wrapping:** Formats code blocks with `white-space: pre-wrap` and overflow wrapping, eliminating unprintable horizontal scrollbars and text truncation on paper.
 - **Double-Buffered Viewport:** Smooth typing experience with zero white flash and persistent scroll tracking.
@@ -195,7 +197,7 @@ npm run dev
     ├── engine/
     │   ├── dom-utils.ts     # Metric conversion (mm -> px) and DOM stabilization gate
     │   ├── preprocessor.ts  # Markdown authoring directives (\pagebreak) parser
-    │   ├── splitter.ts      # Semantic bisection for code blocks, tables, lists, and text
+    │   ├── splitter.ts      # Semantic bisection for diagrams, code blocks, tables, lists, and text
     │   └── paginator.ts     # Unidirectional virtual sheet distribution engine
     ├── view/
     │   ├── pdf-view.ts      # Obsidian ItemView controller, debounce, and twin-container swap
@@ -208,7 +210,7 @@ npm run dev
         ├── paginator.test.ts # Time-slicing, DOM transfer, and metric fallback tests
         ├── pdf-view-cache.test.ts # Multi-tab LRU cache, race shielding, and sandboxing tests
         ├── preprocessor.test.ts # Directive translation and code block shielding tests
-        └── splitter.test.ts # Bisection unit tests (tables, lists, code fences, prose)
+        └── splitter.test.ts # Bisection unit tests (diagrams, tables, lists, code fences, prose)
 ```
 
 ---

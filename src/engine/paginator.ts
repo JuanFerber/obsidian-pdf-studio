@@ -9,11 +9,7 @@
  */
 
 import { type PageLimitsPx, waitForNextFrame } from "@/engine/dom-utils";
-import {
-  isCodeBlock,
-  isUnsplittable,
-  splitElementAtOverflow,
-} from "@/engine/splitter";
+import { splitElementAtOverflow } from "@/engine/splitter";
 
 /**
  * Represents a single virtual paginated sheet with physical dimensions and printable margin gutters.
