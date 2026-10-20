@@ -156,6 +156,8 @@
 /* Native table styling on virtual pages */
 .pdf-page-content table {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   border-collapse: collapse;
   margin-bottom: 1rem;
 }
@@ -164,13 +166,16 @@
 .pdf-page-content td {
   border: 1px solid #d0d7de;
   padding: 6px 12px;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .pdf-page-content th {
   background-color: #f6f8fa;
   font-weight: 600;
 }
-
 /* Code blocks styling on paper: force line wrapping within page width */
 .pdf-page-content pre {
   background-color: #f6f8fa;
@@ -200,15 +205,19 @@
   max-width: 100%;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   overflow: hidden;
   box-sizing: border-box;
   margin: 0.75rem 0;
 }
 
-.pdf-page-content .mermaid svg,
-.pdf-page-content .block-language-mermaid svg,
-.pdf-page-content svg,
+.pdf-page-content .block-language-mermaid .mermaid {
+  margin: 0;
+}
+
+.pdf-page-content .mermaid svg:not(.pdf-svg-sliced),
+.pdf-page-content .block-language-mermaid svg:not(.pdf-svg-sliced),
+.pdf-page-content svg:not(.pdf-svg-sliced),
 .pdf-page-content img,
 .pdf-page-content canvas {
   max-width: 100% !important;
@@ -216,6 +225,27 @@
   box-sizing: border-box;
 }
 
+/* Diagram slicing & cut borders across page breaks */
+.pdf-page-content .pdf-diagram-slice {
+  position: relative;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.pdf-page-content .pdf-diagram-cut-bottom {
+  border-bottom: 1.5px dashed #9ca3af !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.pdf-page-content .pdf-diagram-cut-top {
+  border-top: 1.5px dashed #9ca3af !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
 /* LaTeX / MathJax containers */
 .pdf-page-content .math-block,
 .pdf-page-content mjx-container[display="true"] {

@@ -89,7 +89,7 @@ function createVirtualPage(
  *
  * Heuristics applied:
  * - Matches all heading levels `H1` through `H6`.
- * - Matches short paragraphs (`<p>`) with length under 120 characters devoid of embedded media/code.
+ * - Matches short paragraphs (`<p>`) with length under 240 characters devoid of embedded media/code.
  *
  * @param el - Candidate element to test.
  * @returns True if the element must be bound to its following sibling.
@@ -101,7 +101,7 @@ function isLeadInElement(el: HTMLElement | null): boolean {
     const text = (el.textContent || "").trim();
     return (
       text.length > 0 &&
-      text.length < 120 &&
+      text.length < 240 &&
       el.querySelectorAll("img, table, pre, code").length === 0
     );
   }
@@ -203,54 +203,23 @@ export async function paginate(
     }
 
     // Case 2: Element overflows printable boundary
-    const isFirstOnPage = currentPage.contentEl.children.length === 1;
-    const firstChild = currentPage.contentEl
-      .firstElementChild as HTMLElement | null;
+    const childCount = currentPage.contentEl.children.length;
+    const firstChild =
+      (currentPage.contentEl.children[0] as HTMLElement | undefined) ?? null;
+    const secondChild =
+      (currentPage.contentEl.children[1] as HTMLElement | undefined) ?? null;
     const isTopBlockOnPage =
-      isFirstOnPage ||
-      (currentPage.contentEl.children.length === 2 &&
+      childCount === 1 ||
+      (childCount === 2 &&
         firstChild !== null &&
-        isLeadInElement(firstChild));
+        isLeadInElement(firstChild)) ||
+      (childCount === 3 &&
+        firstChild !== null &&
+        /^H[1-6]$/.test(firstChild.tagName) &&
+        secondChild !== null &&
+        isLeadInElement(secondChild));
 
-    // If NOT the top block on the page, check whether we should move the element to the next page intact:
-    if (!isTopBlockOnPage) {
-      const isBlock =
-        isUnsplittable(element) ||
-        isCodeBlock(element) ||
-        element.tagName === "TABLE" ||
-        element.classList.contains("callout") ||
-        element.classList.contains("math-block");
-
-      const canFitOnFreshPage = elRect.height <= limits.contentHeightPx;
-
-      if (isBlock || canFitOnFreshPage) {
-        // Keep-with-next: if the immediately preceding sibling is a heading or lead-in paragraph, move it together with this block
-        const prevSibling =
-          element.previousElementSibling as HTMLElement | null;
-        const isPrevLeadIn = isLeadInElement(prevSibling);
-        const canMoveLeadIn =
-          isPrevLeadIn && currentPage.contentEl.children.length > 2;
-
-        element.remove();
-        if (canMoveLeadIn && prevSibling) {
-          prevSibling.remove();
-        }
-
-        currentPageIndex++;
-        currentPage = createVirtualPage(currentPageIndex, limits, doc);
-        pages.push(currentPage);
-        rootContainer.appendChild(currentPage.pageEl);
-
-        if (canMoveLeadIn && prevSibling) {
-          currentPage.contentEl.appendChild(prevSibling);
-        }
-
-        // Do not increment i; next iteration will append element to the new page and evaluate it
-        continue;
-      }
-    }
-
-    // Element is the top block on the page and overflows (taller than printable area) -> bisect it
+    // Attempt semantic bisection first
     const split = splitElementAtOverflow(
       element,
       limits.maxContentBottomPx,
@@ -266,23 +235,47 @@ export async function paginate(
 
       // Queue tail element as the next element to evaluate on new page
       children[i] = split.tail;
-    } else {
-      // Cannot split (or head was null).
-      element.remove();
-
-      // Avoid infinite loops if an indivisible element is taller than an entire page
-      if (!isTopBlockOnPage) {
-        currentPageIndex++;
-        currentPage = createVirtualPage(currentPageIndex, limits, doc);
-        pages.push(currentPage);
-        rootContainer.appendChild(currentPage.pageEl);
-        currentPage.contentEl.appendChild(element);
-      } else {
-        // Element is taller than an entire blank page: keep it clipped on this page
-        currentPage.contentEl.appendChild(element);
-      }
-      i++;
+      continue;
     }
+
+    // Handle unbisectable overflow (split === null)
+    if (!isTopBlockOnPage) {
+      const prev1 = element.previousElementSibling as HTMLElement | null;
+      const queuedLeadIns: HTMLElement[] = [];
+      if (prev1 && isLeadInElement(prev1)) {
+        const prev2 = prev1.previousElementSibling as HTMLElement | null;
+        if (prev2) {
+          if (/^H[1-6]$/.test(prev2.tagName)) {
+            const prev3 = prev2.previousElementSibling as HTMLElement | null;
+            if (prev3) {
+              queuedLeadIns.push(prev2, prev1);
+            }
+          } else {
+            queuedLeadIns.push(prev1);
+          }
+        }
+      }
+
+      element.remove();
+      for (const leadIn of queuedLeadIns) {
+        leadIn.remove();
+      }
+
+      currentPageIndex++;
+      currentPage = createVirtualPage(currentPageIndex, limits, doc);
+      pages.push(currentPage);
+      rootContainer.appendChild(currentPage.pageEl);
+
+      for (const leadIn of queuedLeadIns) {
+        currentPage.contentEl.appendChild(leadIn);
+      }
+
+      continue;
+    }
+
+    // Element is the top block on the page and overflows:
+    // Keep it on this page to prevent infinite loops and advance
+    i++;
   }
 
   // Keep-with-next: prevent lonely heading or lead-in paragraph at the very bottom of a page
@@ -302,10 +295,20 @@ export async function paginate(
           lastChild,
           nextPage.contentEl.firstElementChild,
         );
+
+        // If the newly exposed bottom element is a heading and preceding content remains, pull it forward as well
+        const prevChild = page.contentEl.lastElementChild as HTMLElement | null;
+        if (
+          prevChild &&
+          /^H[1-6]$/.test(prevChild.tagName) &&
+          page.contentEl.children.length > 1
+        ) {
+          prevChild.remove();
+          nextPage.contentEl.insertBefore(prevChild, lastChild);
+        }
       }
     }
   }
-
   // Detach from temporary host before returning to caller
   if (hostContainer && rootContainer.parentElement === hostContainer) {
     hostContainer.removeChild(rootContainer);
