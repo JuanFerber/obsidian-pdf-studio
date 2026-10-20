@@ -719,25 +719,38 @@ describe("Code Block Splitter & Pagination", () => {
     expect(result.head.classList.contains("pdf-diagram-slice")).toBe(true);
     expect(result.head.classList.contains("pdf-diagram-cut-bottom")).toBe(true);
     expect(result.head.style.borderBottom).toContain("1.5px dashed");
-    expect(result.head.style.height).toBe("200px");
+    expect(result.head.style.height).toBe("196px");
+    expect(result.head.style.width).toBe("100%");
+    expect(result.head.style.maxWidth).toBe("100%");
     expect(result.head.getAttribute("data-slice-offset")).toBe("0");
     expect(result.head.getAttribute("data-full-height")).toBe("600");
+
+    const headSvg = result.head.querySelector("svg");
+    expect(headSvg?.style.width).toBe("400px");
+    expect(headSvg?.style.maxWidth).toBe("100%");
+    expect(headSvg?.style.marginLeft).toBe("auto");
+    expect(headSvg?.style.marginRight).toBe("auto");
 
     expect(result.tail.classList.contains("pdf-diagram-slice")).toBe(true);
     expect(result.tail.classList.contains("pdf-split-continued")).toBe(true);
     expect(result.tail.classList.contains("pdf-diagram-cut-top")).toBe(true);
     expect(result.tail.style.borderTop).toContain("1.5px dashed");
-    expect(result.tail.style.height).toBe("400px");
-    expect(result.tail.getAttribute("data-slice-offset")).toBe("200");
+    expect(result.tail.style.height).toBe("404px");
+    expect(result.tail.style.width).toBe("100%");
+    expect(result.tail.style.maxWidth).toBe("100%");
+    expect(result.tail.getAttribute("data-slice-offset")).toBe("196");
     expect(result.tail.getAttribute("data-full-height")).toBe("600");
 
     const tailSvg = result.tail.querySelector("svg");
     expect(tailSvg).not.toBeNull();
     expect(tailSvg?.classList.contains("pdf-svg-sliced")).toBe(true);
-    expect(tailSvg?.style.marginTop).toBe("-200px");
+    expect(tailSvg?.style.width).toBe("400px");
+    expect(tailSvg?.style.maxWidth).toBe("100%");
+    expect(tailSvg?.style.marginLeft).toBe("auto");
+    expect(tailSvg?.style.marginRight).toBe("auto");
+    expect(tailSvg?.style.marginTop).toBe("-196px");
     expect(tailSvg?.style.height).toBe("600px");
   });
-
   it("splitDiagram multi-page bisection produces middle slice with both top and bottom dashed borders", () => {
     const sliceWrapper = document.createElement("div");
     sliceWrapper.classList.add("pdf-diagram-slice", "pdf-split-continued");
@@ -781,20 +794,23 @@ describe("Code Block Splitter & Pagination", () => {
     expect(result.head.classList.contains("pdf-diagram-cut-bottom")).toBe(true);
     expect(result.head.style.borderTop).toContain("1.5px dashed");
     expect(result.head.style.borderBottom).toContain("1.5px dashed");
-    expect(result.head.style.height).toBe("200px");
+    expect(result.head.style.height).toBe("196px");
+    expect(result.head.style.width).toBe("100%");
+    expect(result.head.style.maxWidth).toBe("100%");
     expect(result.head.getAttribute("data-slice-offset")).toBe("200");
 
     expect(result.tail.classList.contains("pdf-diagram-cut-top")).toBe(true);
     expect(result.tail.classList.contains("pdf-diagram-cut-bottom")).toBe(
       false,
     );
-    expect(result.tail.style.height).toBe("200px");
-    expect(result.tail.getAttribute("data-slice-offset")).toBe("400");
+    expect(result.tail.style.height).toBe("204px");
+    expect(result.tail.style.width).toBe("100%");
+    expect(result.tail.style.maxWidth).toBe("100%");
+    expect(result.tail.getAttribute("data-slice-offset")).toBe("396");
 
     const tailSvg = result.tail.querySelector("svg");
-    expect(tailSvg?.style.marginTop).toBe("-400px");
+    expect(tailSvg?.style.marginTop).toBe("-396px");
   });
-
   it("splitDiagram returns null when available vertical space is < 80px", () => {
     const mermaidWrapper = document.createElement("div");
     mermaidWrapper.classList.add("block-language-mermaid");

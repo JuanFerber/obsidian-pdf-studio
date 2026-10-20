@@ -203,6 +203,7 @@
 .pdf-page-content .block-language-mermaid {
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -213,6 +214,19 @@
 
 .pdf-page-content .block-language-mermaid .mermaid {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.pdf-page-content .mermaid svg,
+.pdf-page-content .block-language-mermaid svg,
+.pdf-page-content svg,
+.pdf-page-content img,
+.pdf-page-content canvas {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
 }
 
 .pdf-page-content .mermaid svg:not(.pdf-svg-sliced),
@@ -220,9 +234,7 @@
 .pdf-page-content svg:not(.pdf-svg-sliced),
 .pdf-page-content img,
 .pdf-page-content canvas {
-  max-width: 100% !important;
   height: auto !important;
-  box-sizing: border-box;
 }
 
 /* Diagram slicing & cut borders across page breaks */
@@ -231,8 +243,10 @@
   overflow: hidden !important;
   box-sizing: border-box !important;
   display: block !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 .pdf-page-content .pdf-diagram-cut-bottom {
@@ -241,10 +255,34 @@
   padding-bottom: 0 !important;
 }
 
+.pdf-page-content .pdf-diagram-cut-bottom::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  border-bottom: 1.5px dashed #9ca3af;
+  pointer-events: none;
+  z-index: 10;
+}
+
 .pdf-page-content .pdf-diagram-cut-top {
   border-top: 1.5px dashed #9ca3af !important;
   margin-top: 0 !important;
   padding-top: 0 !important;
+}
+
+.pdf-page-content .pdf-diagram-cut-top::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  width: 100%;
+  border-top: 1.5px dashed #9ca3af;
+  pointer-events: none;
+  z-index: 10;
 }
 /* LaTeX / MathJax containers */
 .pdf-page-content .math-block,

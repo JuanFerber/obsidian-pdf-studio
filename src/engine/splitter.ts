@@ -378,33 +378,67 @@ export function splitDiagram(
 
   const prevOffsetPx = Number(element.getAttribute("data-slice-offset") || "0");
   const attrFullHeight = Number(
-    element.getAttribute("data-full-height") || "0",
+    element.getAttribute("data-full-height") ||
+      svgEl?.getAttribute("data-full-height") ||
+      "0",
   );
   const attrDiagramWidth = Number(
-    element.getAttribute("data-diagram-width") || "0",
+    element.getAttribute("data-diagram-width") ||
+      svgEl?.getAttribute("data-diagram-width") ||
+      "0",
   );
 
-  const rawHeight = svgRect.height > 0 ? svgRect.height : elRect.height;
-  const fullHeightPx =
-    attrFullHeight > 0 ? attrFullHeight : Math.ceil(rawHeight);
-  const diagramWidthPx =
+  const rawHeight = Math.max(svgRect.height, elRect.height);
+  let fullHeightPx =
+    attrFullHeight > 0
+      ? Math.max(attrFullHeight, prevOffsetPx === 0 ? Math.ceil(rawHeight) : 0)
+      : Math.ceil(rawHeight);
+  let diagramWidthPx =
     attrDiagramWidth > 0
       ? attrDiagramWidth
       : Math.ceil(svgRect.width > 0 ? svgRect.width : elRect.width);
 
-  const remainingHeightPx =
+  const parentWidthPx = parseFloat(element.parentElement?.style.width || "0");
+  if (
+    !isNaN(parentWidthPx) &&
+    parentWidthPx > 0 &&
+    diagramWidthPx > parentWidthPx
+  ) {
+    const scaleFactor = parentWidthPx / diagramWidthPx;
+    diagramWidthPx = Math.floor(parentWidthPx);
+    if (prevOffsetPx === 0 && fullHeightPx > 0) {
+      fullHeightPx = Math.max(1, Math.floor(fullHeightPx * scaleFactor));
+    }
+  }
+
+  let remainingHeightPx =
     prevOffsetPx > 0 && fullHeightPx > prevOffsetPx
       ? fullHeightPx - prevOffsetPx
       : Math.ceil(elRect.height > 0 ? elRect.height : rawHeight);
 
-  const availableHeightPx = Math.floor(maxBottomPx - (elRect.top - pageTopPx));
+  // Reserve 4px safety clearance at bottom so .pdf-page-content overflow:hidden never clips the dashed border
+  const SAFETY_BOTTOM_GAP_PX = 4;
+  const rawAvailablePx = Math.floor(maxBottomPx - (elRect.top - pageTopPx));
+  const availableHeightPx =
+    rawAvailablePx >= 80 + SAFETY_BOTTOM_GAP_PX
+      ? rawAvailablePx - SAFETY_BOTTOM_GAP_PX
+      : rawAvailablePx;
 
-  if (
-    remainingHeightPx <= 0 ||
-    availableHeightPx < 80 ||
-    remainingHeightPx <= availableHeightPx
-  ) {
+  if (remainingHeightPx <= 0 || availableHeightPx < 80) {
     return null;
+  }
+
+  // If element overflowed maxBottomPx in paginator, ensure remainingHeightPx reflects the overflow
+  const measuredOverflowPx = Math.ceil(elRect.bottom - pageTopPx - maxBottomPx);
+  if (remainingHeightPx <= availableHeightPx) {
+    if (measuredOverflowPx > 0) {
+      remainingHeightPx = rawAvailablePx + measuredOverflowPx;
+      if (prevOffsetPx + remainingHeightPx > fullHeightPx) {
+        fullHeightPx = prevOffsetPx + remainingHeightPx;
+      }
+    } else {
+      return null;
+    }
   }
 
   const minTailPx = Math.min(32, Math.floor(remainingHeightPx * 0.2));
@@ -412,7 +446,7 @@ export function splitDiagram(
   if (remainingHeightPx - sliceHeightPx < minTailPx) {
     sliceHeightPx = remainingHeightPx - minTailPx;
   }
-  if (sliceHeightPx < 80) {
+  if (sliceHeightPx < 60) {
     return null;
   }
 
@@ -437,19 +471,25 @@ export function splitDiagram(
 
   const hostTail = hostHead.cloneNode(true) as HTMLElement;
 
-  // Configure head slice
+  // Configure head slice: full page content width (100%) so dashed line spans entire printable width
   hostHead.classList.add("pdf-diagram-slice");
   hostHead.setAttribute("data-slice-offset", String(prevOffsetPx));
   hostHead.setAttribute("data-full-height", String(fullHeightPx));
   hostHead.setAttribute("data-diagram-width", String(diagramWidthPx));
   hostHead.style.height = `${sliceHeightPx}px`;
   hostHead.style.maxHeight = `${sliceHeightPx}px`;
+  hostHead.style.width = "100%";
+  hostHead.style.maxWidth = "100%";
   hostHead.style.overflow = "hidden";
   hostHead.style.boxSizing = "border-box";
+  hostHead.style.marginBottom = "0px";
+  hostHead.style.paddingBottom = "0px";
 
   if (prevOffsetPx > 0) {
     hostHead.classList.add("pdf-diagram-cut-top");
     hostHead.style.borderTop = "1.5px dashed #9ca3af";
+    hostHead.style.marginTop = "0px";
+    hostHead.style.paddingTop = "0px";
   }
   hostHead.classList.add("pdf-diagram-cut-bottom");
   hostHead.style.borderBottom = "1.5px dashed #9ca3af";
@@ -462,26 +502,50 @@ export function splitDiagram(
   if (headSvg) {
     headSvg.classList.add("pdf-svg-sliced");
     headSvg.style.setProperty("height", `${fullHeightPx}px`, "important");
+    if (diagramWidthPx > 0) {
+      headSvg.style.setProperty("width", `${diagramWidthPx}px`, "important");
+    }
+    headSvg.style.setProperty("max-width", "100%", "important");
+    headSvg.style.display = "block";
+    headSvg.style.marginLeft = "auto";
+    headSvg.style.marginRight = "auto";
     if (prevOffsetPx > 0) {
       headSvg.style.marginTop = `-${prevOffsetPx}px`;
     }
   }
 
-  // Configure tail slice
+  // Configure tail slice: full page content width (100%) so dashed line spans entire printable width
   hostTail.classList.add("pdf-diagram-slice", "pdf-split-continued");
   hostTail.setAttribute("data-slice-offset", String(nextOffsetPx));
   hostTail.setAttribute("data-full-height", String(fullHeightPx));
   hostTail.setAttribute("data-diagram-width", String(diagramWidthPx));
   hostTail.style.height = `${tailHeightPx}px`;
   hostTail.style.maxHeight = `${tailHeightPx}px`;
+  hostTail.style.width = "100%";
+  hostTail.style.maxWidth = "100%";
   hostTail.style.overflow = "hidden";
   hostTail.style.boxSizing = "border-box";
   hostTail.style.marginTop = "0px";
+  hostTail.style.paddingTop = "0px";
 
   hostTail.classList.add("pdf-diagram-cut-top");
   hostTail.style.borderTop = "1.5px dashed #9ca3af";
   hostTail.classList.remove("pdf-diagram-cut-bottom");
   hostTail.style.borderBottom = "none";
+
+  for (const host of [hostHead, hostTail]) {
+    const innerMermaids = host.querySelectorAll<HTMLElement>(".mermaid");
+    for (const inner of Array.from(innerMermaids)) {
+      if (inner !== host) {
+        inner.style.margin = "0";
+        inner.style.padding = "0";
+        inner.style.width = "100%";
+        inner.style.maxWidth = "100%";
+        inner.style.display = "block";
+        inner.style.overflow = "visible";
+      }
+    }
+  }
 
   const tailSvg = isRootSvg
     ? hostTail.querySelector<SVGElement>("svg")
@@ -491,6 +555,13 @@ export function splitDiagram(
   if (tailSvg) {
     tailSvg.classList.add("pdf-svg-sliced");
     tailSvg.style.setProperty("height", `${fullHeightPx}px`, "important");
+    if (diagramWidthPx > 0) {
+      tailSvg.style.setProperty("width", `${diagramWidthPx}px`, "important");
+    }
+    tailSvg.style.setProperty("max-width", "100%", "important");
+    tailSvg.style.display = "block";
+    tailSvg.style.marginLeft = "auto";
+    tailSvg.style.marginRight = "auto";
     tailSvg.style.marginTop = `-${nextOffsetPx}px`;
   }
 

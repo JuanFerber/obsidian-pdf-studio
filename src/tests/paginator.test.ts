@@ -175,6 +175,44 @@ describe("Paginator & DOM Metric Engine", () => {
     expect(svg.style.maxWidth).toBe("100%");
   });
 
+  it("fitElementsToPageBounds proportionally scales wide Mermaid diagrams based on intrinsic viewBox and maxWidth", () => {
+    const container = document.createElement("div");
+    const blockLang = document.createElement("div");
+    blockLang.className = "block-language-mermaid";
+    const mermaidWrap = document.createElement("div");
+    mermaidWrap.className = "mermaid";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 1600 1200");
+    svg.style.maxWidth = "1600px";
+
+    mermaidWrap.appendChild(svg);
+    blockLang.appendChild(mermaidWrap);
+    container.appendChild(blockLang);
+
+    // Bounding client rect width reports 720 due to page CSS, but viewBox is 1600x1200
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+      width: 720,
+      height: 540,
+      top: 0,
+      bottom: 540,
+      left: 0,
+      right: 720,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fitElementsToPageBounds(container, dummyLimits);
+
+    expect(svg.style.width).toBe("720px");
+    expect(svg.style.height).toBe("540px");
+    expect(svg.style.maxWidth).toBe("100%");
+    expect(svg.getAttribute("data-diagram-width")).toBe("720");
+    expect(svg.getAttribute("data-full-height")).toBe("540");
+    expect(blockLang.getAttribute("data-diagram-width")).toBe("720");
+    expect(blockLang.getAttribute("data-full-height")).toBe("540");
+  });
+
   it("fitElementsToPageBounds scales down wide MathJax equations", () => {
     const container = document.createElement("div");
     const mathBlock = document.createElement("div");
