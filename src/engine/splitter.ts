@@ -37,7 +37,6 @@ const UNSPLITTABLE_TAGS: Record<string, true> = {
   H5: true,
   H6: true,
   IMG: true,
-  SVG: true,
   CANVAS: true,
   HR: true,
   VIDEO: true,
@@ -46,35 +45,93 @@ const UNSPLITTABLE_TAGS: Record<string, true> = {
 };
 
 /**
+ * Determines whether an element represents a table or a container wrapping exclusively a table.
+ *
+ * @param element - The candidate HTML element.
+ * @returns True if the element represents a standalone or wrapped table.
+ */
+export function isTableElement(element: HTMLElement): boolean {
+  if (element.tagName.toUpperCase() === "TABLE") return true;
+  if (
+    element.querySelector("table") !== null &&
+    element.querySelectorAll("p, h1, h2, h3, h4, h5, h6, pre, ul, ol")
+      .length === 0
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Determines whether an element represents a Mermaid diagram, SVG graphic, or diagram slice.
+ *
+ * Excludes LaTeX math blocks, images, and embedded interactive media.
+ *
+ * @param element - The candidate HTML element.
+ * @returns True if the element is identified as a splittable diagram container.
+ */
+export function isDiagramElement(element: HTMLElement): boolean {
+  const tag = element.tagName.toUpperCase();
+  if (
+    element.classList.contains("math-block") ||
+    element.classList.contains("frontmatter") ||
+    element.querySelector(
+      ".math-block, mjx-container, img, canvas, video, iframe",
+    ) !== null
+  ) {
+    return false;
+  }
+  if (
+    element.classList.contains("mermaid") ||
+    element.classList.contains("block-language-mermaid") ||
+    element.classList.contains("pdf-diagram-slice")
+  ) {
+    return true;
+  }
+  if (tag === "SVG" && !element.classList.contains("svg-icon")) {
+    return true;
+  }
+  if (
+    tag === "TABLE" ||
+    tag === "UL" ||
+    tag === "OL" ||
+    isCodeBlock(element) ||
+    isTableElement(element)
+  ) {
+    return false;
+  }
+  return element.querySelector("svg:not(.svg-icon)") !== null;
+}
+
+/**
  * Determines whether an element represents an atomic block that cannot be bisected.
  *
  * Invariants:
  * - All heading levels (H1-H6) are indivisible to uphold editorial hierarchy.
- * - Graphical media elements (IMG, SVG, CANVAS, VIDEO) and Mermaid diagrams remain atomic.
- * - Math blocks (`.math-block`, display `mjx-container`) and frontmatter remain atomic.
- * - Splittable containers (`TABLE`, `UL`, `OL`, and valid code blocks) are explicitly excluded,
- *   even if they contain UI icon SVGs (e.g. copy button icons or list collapse triangles).
+ * - Graphical media elements (IMG, CANVAS, VIDEO) and math blocks remain atomic.
+ * - Diagrams, code blocks, tables, and lists are explicitly splittable.
  *
  * @param element - The candidate HTML element undergoing overflow evaluation.
  * @returns True if the element must remain undivided and transition intact to the next page.
  */
 export function isUnsplittable(element: HTMLElement): boolean {
+  if (
+    isDiagramElement(element) ||
+    isTableElement(element) ||
+    isCodeBlock(element)
+  ) {
+    return false;
+  }
   const tag = element.tagName.toUpperCase();
+  if (tag === "UL" || tag === "OL") {
+    return false;
+  }
   if (UNSPLITTABLE_TAGS[tag] === true) return true;
   if (element.classList.contains("math-block")) return true;
   if (element.classList.contains("frontmatter")) return true;
   if (
-    element.classList.contains("mermaid") ||
-    element.classList.contains("block-language-mermaid")
-  ) {
-    return true;
-  }
-  if (tag === "TABLE" || tag === "UL" || tag === "OL" || isCodeBlock(element)) {
-    return false;
-  }
-  if (
     element.querySelector(
-      "svg:not(.svg-icon), img, canvas, video, iframe, .math-block, mjx-container[display='true']",
+      "img, canvas, video, iframe, .math-block, mjx-container[display='true']",
     ) !== null
   ) {
     return true;
@@ -296,6 +353,225 @@ export function splitCodeBlock(
 }
 
 /**
+ * Splits an overflowing Mermaid or SVG diagram across page breaks using semantic height window slicing.
+ *
+ * Preserves natural diagram dimensions without downscaling by creating upper and lower slices
+ * adorned with dashed boundary cut lines (`#9ca3af`).
+ *
+ * @param element - Diagram container or root SVG element.
+ * @param maxBottomPx - Printable threshold in viewport pixels (`pageHeight - marginBottom`).
+ * @param pageTopPx - Bounding top coordinate of the current virtual page.
+ * @returns {@link SplitResult} on successful bisection, or `null` if unable to slice.
+ */
+export function splitDiagram(
+  element: HTMLElement,
+  maxBottomPx: number,
+  pageTopPx: number,
+): SplitResult | null {
+  const isRootSvg = element.tagName.toUpperCase() === "SVG";
+  const svgEl = isRootSvg
+    ? (element as unknown as SVGElement)
+    : element.querySelector<SVGElement>("svg:not(.svg-icon)");
+
+  const elRect = element.getBoundingClientRect();
+  const svgRect = svgEl ? svgEl.getBoundingClientRect() : elRect;
+
+  const prevOffsetPx = Number(element.getAttribute("data-slice-offset") || "0");
+  const attrFullHeight = Number(
+    element.getAttribute("data-full-height") ||
+      svgEl?.getAttribute("data-full-height") ||
+      "0",
+  );
+  const attrDiagramWidth = Number(
+    element.getAttribute("data-diagram-width") ||
+      svgEl?.getAttribute("data-diagram-width") ||
+      "0",
+  );
+
+  const rawHeight = Math.max(svgRect.height, elRect.height);
+  let fullHeightPx =
+    attrFullHeight > 0
+      ? Math.max(attrFullHeight, prevOffsetPx === 0 ? Math.ceil(rawHeight) : 0)
+      : Math.ceil(rawHeight);
+  let diagramWidthPx =
+    attrDiagramWidth > 0
+      ? attrDiagramWidth
+      : Math.ceil(svgRect.width > 0 ? svgRect.width : elRect.width);
+
+  const parentWidthPx = parseFloat(element.parentElement?.style.width || "0");
+  if (
+    !isNaN(parentWidthPx) &&
+    parentWidthPx > 0 &&
+    diagramWidthPx > parentWidthPx
+  ) {
+    const scaleFactor = parentWidthPx / diagramWidthPx;
+    diagramWidthPx = Math.floor(parentWidthPx);
+    if (prevOffsetPx === 0 && fullHeightPx > 0) {
+      fullHeightPx = Math.max(1, Math.floor(fullHeightPx * scaleFactor));
+    }
+  }
+
+  let remainingHeightPx =
+    prevOffsetPx > 0 && fullHeightPx > prevOffsetPx
+      ? fullHeightPx - prevOffsetPx
+      : Math.ceil(elRect.height > 0 ? elRect.height : rawHeight);
+
+  // Reserve 4px safety clearance at bottom so .pdf-page-content overflow:hidden never clips the dashed border
+  const SAFETY_BOTTOM_GAP_PX = 4;
+  const rawAvailablePx = Math.floor(maxBottomPx - (elRect.top - pageTopPx));
+  const availableHeightPx =
+    rawAvailablePx >= 80 + SAFETY_BOTTOM_GAP_PX
+      ? rawAvailablePx - SAFETY_BOTTOM_GAP_PX
+      : rawAvailablePx;
+
+  if (remainingHeightPx <= 0 || availableHeightPx < 80) {
+    return null;
+  }
+
+  // If element overflowed maxBottomPx in paginator, ensure remainingHeightPx reflects the overflow
+  const measuredOverflowPx = Math.ceil(elRect.bottom - pageTopPx - maxBottomPx);
+  if (remainingHeightPx <= availableHeightPx) {
+    if (measuredOverflowPx > 0) {
+      remainingHeightPx = rawAvailablePx + measuredOverflowPx;
+      if (prevOffsetPx + remainingHeightPx > fullHeightPx) {
+        fullHeightPx = prevOffsetPx + remainingHeightPx;
+      }
+    } else {
+      return null;
+    }
+  }
+
+  const minTailPx = Math.min(32, Math.floor(remainingHeightPx * 0.2));
+  let sliceHeightPx = availableHeightPx;
+  if (remainingHeightPx - sliceHeightPx < minTailPx) {
+    sliceHeightPx = remainingHeightPx - minTailPx;
+  }
+  if (sliceHeightPx < 60) {
+    return null;
+  }
+
+  const nextOffsetPx = prevOffsetPx + sliceHeightPx;
+  const tailHeightPx = remainingHeightPx - sliceHeightPx;
+  if (tailHeightPx <= 0) {
+    return null;
+  }
+
+  let hostHead: HTMLElement;
+  if (isRootSvg) {
+    const headWrapper = document.createElement("div");
+    headWrapper.className = "pdf-diagram-slice";
+    if (element.parentNode) {
+      element.parentNode.replaceChild(headWrapper, element);
+    }
+    headWrapper.appendChild(element);
+    hostHead = headWrapper;
+  } else {
+    hostHead = element;
+  }
+
+  const hostTail = hostHead.cloneNode(true) as HTMLElement;
+
+  // Configure head slice: full page content width (100%) so dashed line spans entire printable width
+  hostHead.classList.add("pdf-diagram-slice");
+  hostHead.setAttribute("data-slice-offset", String(prevOffsetPx));
+  hostHead.setAttribute("data-full-height", String(fullHeightPx));
+  hostHead.setAttribute("data-diagram-width", String(diagramWidthPx));
+  hostHead.style.height = `${sliceHeightPx}px`;
+  hostHead.style.maxHeight = `${sliceHeightPx}px`;
+  hostHead.style.width = "100%";
+  hostHead.style.maxWidth = "100%";
+  hostHead.style.overflow = "hidden";
+  hostHead.style.boxSizing = "border-box";
+  hostHead.style.marginBottom = "0px";
+  hostHead.style.paddingBottom = "0px";
+
+  if (prevOffsetPx > 0) {
+    hostHead.classList.add("pdf-diagram-cut-top");
+    hostHead.style.borderTop = "1.5px dashed #9ca3af";
+    hostHead.style.marginTop = "0px";
+    hostHead.style.paddingTop = "0px";
+  }
+  hostHead.classList.add("pdf-diagram-cut-bottom");
+  hostHead.style.borderBottom = "1.5px dashed #9ca3af";
+
+  const headSvg = isRootSvg
+    ? hostHead.querySelector<SVGElement>("svg")
+    : hostHead.tagName.toUpperCase() === "SVG"
+      ? (hostHead as unknown as SVGElement)
+      : hostHead.querySelector<SVGElement>("svg:not(.svg-icon)");
+  if (headSvg) {
+    headSvg.classList.add("pdf-svg-sliced");
+    headSvg.style.setProperty("height", `${fullHeightPx}px`, "important");
+    if (diagramWidthPx > 0) {
+      headSvg.style.setProperty("width", `${diagramWidthPx}px`, "important");
+    }
+    headSvg.style.setProperty("max-width", "100%", "important");
+    headSvg.style.display = "block";
+    headSvg.style.marginLeft = "auto";
+    headSvg.style.marginRight = "auto";
+    if (prevOffsetPx > 0) {
+      headSvg.style.marginTop = `-${prevOffsetPx}px`;
+    }
+  }
+
+  // Configure tail slice: full page content width (100%) so dashed line spans entire printable width
+  hostTail.classList.add("pdf-diagram-slice", "pdf-split-continued");
+  hostTail.setAttribute("data-slice-offset", String(nextOffsetPx));
+  hostTail.setAttribute("data-full-height", String(fullHeightPx));
+  hostTail.setAttribute("data-diagram-width", String(diagramWidthPx));
+  hostTail.style.height = `${tailHeightPx}px`;
+  hostTail.style.maxHeight = `${tailHeightPx}px`;
+  hostTail.style.width = "100%";
+  hostTail.style.maxWidth = "100%";
+  hostTail.style.overflow = "hidden";
+  hostTail.style.boxSizing = "border-box";
+  hostTail.style.marginTop = "0px";
+  hostTail.style.paddingTop = "0px";
+
+  hostTail.classList.add("pdf-diagram-cut-top");
+  hostTail.style.borderTop = "1.5px dashed #9ca3af";
+  hostTail.classList.remove("pdf-diagram-cut-bottom");
+  hostTail.style.borderBottom = "none";
+
+  for (const host of [hostHead, hostTail]) {
+    const innerMermaids = host.querySelectorAll<HTMLElement>(".mermaid");
+    for (const inner of Array.from(innerMermaids)) {
+      if (inner !== host) {
+        inner.style.margin = "0";
+        inner.style.padding = "0";
+        inner.style.width = "100%";
+        inner.style.maxWidth = "100%";
+        inner.style.display = "block";
+        inner.style.overflow = "visible";
+      }
+    }
+  }
+
+  const tailSvg = isRootSvg
+    ? hostTail.querySelector<SVGElement>("svg")
+    : hostTail.tagName.toUpperCase() === "SVG"
+      ? (hostTail as unknown as SVGElement)
+      : hostTail.querySelector<SVGElement>("svg:not(.svg-icon)");
+  if (tailSvg) {
+    tailSvg.classList.add("pdf-svg-sliced");
+    tailSvg.style.setProperty("height", `${fullHeightPx}px`, "important");
+    if (diagramWidthPx > 0) {
+      tailSvg.style.setProperty("width", `${diagramWidthPx}px`, "important");
+    }
+    tailSvg.style.setProperty("max-width", "100%", "important");
+    tailSvg.style.display = "block";
+    tailSvg.style.marginLeft = "auto";
+    tailSvg.style.marginRight = "auto";
+    tailSvg.style.marginTop = `-${nextOffsetPx}px`;
+  }
+
+  return {
+    head: hostHead,
+    tail: hostTail,
+  };
+}
+
+/**
  * Splits an HTML table across a page boundary while safeguarding tabular structural integrity.
  *
  * Invariants:
@@ -310,10 +586,19 @@ export function splitCodeBlock(
  * @returns {@link SplitResult} on successful bisection, or `null` if unable to split.
  */
 export function splitTable(
-  table: HTMLTableElement,
+  element: HTMLElement,
   maxBottomPx: number,
   pageTopPx: number,
 ): SplitResult | null {
+  const isDirectTable = element.tagName.toUpperCase() === "TABLE";
+  const table = isDirectTable
+    ? (element as HTMLTableElement)
+    : element.querySelector<HTMLTableElement>("table");
+
+  if (!table) {
+    return null;
+  }
+
   const tbodyRows = Array.from(table.querySelectorAll("tbody > tr"));
   const rows =
     tbodyRows.length > 0
@@ -366,8 +651,18 @@ export function splitTable(
     }
   }
 
+  if (!isDirectTable) {
+    const tailWrapper = element.cloneNode(false) as HTMLElement;
+    tailWrapper.classList.add("pdf-split-continued");
+    tailWrapper.appendChild(tailTable);
+    return {
+      head: element,
+      tail: tailWrapper,
+    };
+  }
+
   return {
-    head: table,
+    head: element,
     tail: tailTable,
   };
 }
@@ -621,15 +916,19 @@ export function splitElementAtOverflow(
     return null;
   }
 
+  if (isDiagramElement(element)) {
+    return splitDiagram(element, maxBottomPx, pageTopPx);
+  }
+
   if (isCodeBlock(element)) {
     return splitCodeBlock(element, maxBottomPx, pageTopPx);
   }
 
-  const tag = element.tagName.toUpperCase();
-
-  if (tag === "TABLE") {
-    return splitTable(element as HTMLTableElement, maxBottomPx, pageTopPx);
+  if (isTableElement(element)) {
+    return splitTable(element, maxBottomPx, pageTopPx);
   }
+
+  const tag = element.tagName.toUpperCase();
 
   if (tag === "UL" || tag === "OL") {
     return splitList(element, maxBottomPx, pageTopPx);

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isCodeBlock,
+  isDiagramElement,
   isUnsplittable,
   splitCodeBlock,
+  splitDiagram,
   splitTable,
   splitList,
   splitTextElement,
@@ -661,11 +663,13 @@ describe("Code Block Splitter & Pagination", () => {
 
     const mermaid = document.createElement("div");
     mermaid.classList.add("block-language-mermaid");
-    expect(isUnsplittable(mermaid)).toBe(true);
+    expect(isUnsplittable(mermaid)).toBe(false);
+    expect(isDiagramElement(mermaid)).toBe(true);
 
     const svgContainer = document.createElement("div");
     svgContainer.appendChild(document.createElement("svg"));
-    expect(isUnsplittable(svgContainer)).toBe(true);
+    expect(isUnsplittable(svgContainer)).toBe(false);
+    expect(isDiagramElement(svgContainer)).toBe(true);
 
     const mathJax = document.createElement("div");
     mathJax.innerHTML = '<mjx-container display="true"></mjx-container>';
@@ -673,5 +677,211 @@ describe("Code Block Splitter & Pagination", () => {
 
     const p = document.createElement("p");
     expect(isUnsplittable(p)).toBe(false);
+  });
+
+  it("splitDiagram bisects overflowing Mermaid diagrams with proper head/tail classes, dashed borders, and negative marginTop on the sliced SVG", () => {
+    const mermaidWrapper = document.createElement("div");
+    mermaidWrapper.classList.add("block-language-mermaid");
+    const svg = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg",
+    ) as unknown as SVGElement;
+    mermaidWrapper.appendChild(svg);
+
+    vi.spyOn(mermaidWrapper, "getBoundingClientRect").mockReturnValue({
+      top: 100,
+      bottom: 700,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 600,
+      x: 0,
+      y: 100,
+      toJSON: () => {},
+    });
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+      top: 100,
+      bottom: 700,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 600,
+      x: 0,
+      y: 100,
+      toJSON: () => {},
+    });
+
+    // maxBottomPx = 300, pageTopPx = 0 -> Available height = 300 - 100 = 200px.
+    const result = splitDiagram(mermaidWrapper, 300, 0);
+    expect(result).not.toBeNull();
+    expect(result?.head).not.toBeNull();
+    if (!result || !result.head) return;
+    expect(result.head.classList.contains("pdf-diagram-slice")).toBe(true);
+    expect(result.head.classList.contains("pdf-diagram-cut-bottom")).toBe(true);
+    expect(result.head.style.borderBottom).toContain("1.5px dashed");
+    expect(result.head.style.height).toBe("196px");
+    expect(result.head.style.width).toBe("100%");
+    expect(result.head.style.maxWidth).toBe("100%");
+    expect(result.head.getAttribute("data-slice-offset")).toBe("0");
+    expect(result.head.getAttribute("data-full-height")).toBe("600");
+
+    const headSvg = result.head.querySelector("svg");
+    expect(headSvg?.style.width).toBe("400px");
+    expect(headSvg?.style.maxWidth).toBe("100%");
+    expect(headSvg?.style.marginLeft).toBe("auto");
+    expect(headSvg?.style.marginRight).toBe("auto");
+
+    expect(result.tail.classList.contains("pdf-diagram-slice")).toBe(true);
+    expect(result.tail.classList.contains("pdf-split-continued")).toBe(true);
+    expect(result.tail.classList.contains("pdf-diagram-cut-top")).toBe(true);
+    expect(result.tail.style.borderTop).toContain("1.5px dashed");
+    expect(result.tail.style.height).toBe("404px");
+    expect(result.tail.style.width).toBe("100%");
+    expect(result.tail.style.maxWidth).toBe("100%");
+    expect(result.tail.getAttribute("data-slice-offset")).toBe("196");
+    expect(result.tail.getAttribute("data-full-height")).toBe("600");
+
+    const tailSvg = result.tail.querySelector("svg");
+    expect(tailSvg).not.toBeNull();
+    expect(tailSvg?.classList.contains("pdf-svg-sliced")).toBe(true);
+    expect(tailSvg?.style.width).toBe("400px");
+    expect(tailSvg?.style.maxWidth).toBe("100%");
+    expect(tailSvg?.style.marginLeft).toBe("auto");
+    expect(tailSvg?.style.marginRight).toBe("auto");
+    expect(tailSvg?.style.marginTop).toBe("-196px");
+    expect(tailSvg?.style.height).toBe("600px");
+  });
+  it("splitDiagram multi-page bisection produces middle slice with both top and bottom dashed borders", () => {
+    const sliceWrapper = document.createElement("div");
+    sliceWrapper.classList.add("pdf-diagram-slice", "pdf-split-continued");
+    sliceWrapper.setAttribute("data-slice-offset", "200");
+    sliceWrapper.setAttribute("data-full-height", "600");
+    sliceWrapper.setAttribute("data-diagram-width", "400");
+    const svg = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg",
+    ) as unknown as SVGElement;
+    sliceWrapper.appendChild(svg);
+
+    vi.spyOn(sliceWrapper, "getBoundingClientRect").mockReturnValue({
+      top: 50,
+      bottom: 450,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 400,
+      x: 0,
+      y: 50,
+      toJSON: () => {},
+    });
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+      top: 50,
+      bottom: 450,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 400,
+      x: 0,
+      y: 50,
+      toJSON: () => {},
+    });
+
+    const result = splitDiagram(sliceWrapper, 250, 0);
+    expect(result).not.toBeNull();
+    expect(result?.head).not.toBeNull();
+    if (!result || !result.head) return;
+    expect(result.head.classList.contains("pdf-diagram-cut-top")).toBe(true);
+    expect(result.head.classList.contains("pdf-diagram-cut-bottom")).toBe(true);
+    expect(result.head.style.borderTop).toContain("1.5px dashed");
+    expect(result.head.style.borderBottom).toContain("1.5px dashed");
+    expect(result.head.style.height).toBe("196px");
+    expect(result.head.style.width).toBe("100%");
+    expect(result.head.style.maxWidth).toBe("100%");
+    expect(result.head.getAttribute("data-slice-offset")).toBe("200");
+
+    expect(result.tail.classList.contains("pdf-diagram-cut-top")).toBe(true);
+    expect(result.tail.classList.contains("pdf-diagram-cut-bottom")).toBe(
+      false,
+    );
+    expect(result.tail.style.height).toBe("204px");
+    expect(result.tail.style.width).toBe("100%");
+    expect(result.tail.style.maxWidth).toBe("100%");
+    expect(result.tail.getAttribute("data-slice-offset")).toBe("396");
+
+    const tailSvg = result.tail.querySelector("svg");
+    expect(tailSvg?.style.marginTop).toBe("-396px");
+  });
+  it("splitDiagram returns null when available vertical space is < 80px", () => {
+    const mermaidWrapper = document.createElement("div");
+    mermaidWrapper.classList.add("block-language-mermaid");
+    const svg = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg",
+    ) as unknown as SVGElement;
+    mermaidWrapper.appendChild(svg);
+
+    vi.spyOn(mermaidWrapper, "getBoundingClientRect").mockReturnValue({
+      top: 250,
+      bottom: 850,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 600,
+      x: 0,
+      y: 250,
+      toJSON: () => {},
+    });
+
+    const result = splitDiagram(mermaidWrapper, 300, 0);
+    expect(result).toBeNull();
+  });
+
+  it("splitTable bisects wrapped tables preserving wrapper on tail and cloning thead", () => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-wrapper";
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    const th1 = document.createElement("th");
+    th1.textContent = "Col A";
+    headerRow.appendChild(th1);
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (let i = 0; i < 5; i++) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.textContent = `Row ${i}`;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+
+      vi.spyOn(tr, "getBoundingClientRect").mockReturnValue({
+        top: 100 + i * 30,
+        bottom: 100 + (i + 1) * 30,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 30,
+        x: 0,
+        y: 100 + i * 30,
+        toJSON: () => {},
+      });
+    }
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+
+    const result = splitTable(wrapper, 170, 0);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.head).toBe(wrapper);
+    expect(result.tail.className).toContain("table-wrapper");
+    expect(result.tail.classList.contains("pdf-split-continued")).toBe(true);
+
+    const tailTable = result.tail.querySelector("table");
+    expect(tailTable).not.toBeNull();
+    expect(tailTable?.querySelector("thead")).not.toBeNull();
+    expect(tailTable?.querySelectorAll("tbody > tr").length).toBe(3);
   });
 });

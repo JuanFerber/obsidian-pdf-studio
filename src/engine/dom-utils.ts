@@ -258,11 +258,12 @@ export async function waitForDomSettled(
  *
  * Operations:
  * 1. SVGs (.mermaid, .block-language-mermaid, svg): Ensures viewBox is configured,
- *    calculates proportional scale factor clamped to `contentWidthPx` and `contentHeightPx`,
- *    and resizes element style width/height without distortion.
+ *    calculates proportional scale factor clamped to `contentWidthPx`,
+ *    and resizes element style width/height without vertical distortion or premature compression.
  * 2. MathJax (mjx-container, .math-block): Detects horizontal overflow against `contentWidthPx`,
  *    scaling down wide formulas via CSS transform scale with left-center transform origin.
- *
+ * 3. Tables (table): Auto-fits wide tables to printable width by scaling font size,
+ *    reducing cell padding, and applying residual zoom if needed.
  * @param container - Rendered scratch DOM container hosting content elements.
  * @param limits - Calculated printable page bounds in screen pixels.
  */
@@ -271,28 +272,116 @@ export function fitElementsToPageBounds(
   limits: PageLimitsPx,
 ): void {
   // 1. Proportional scaling for Mermaid diagrams and generic SVGs (ignoring UI icons)
+  const diagramContainers = container.querySelectorAll<HTMLElement>(
+    ".mermaid, .block-language-mermaid",
+  );
+  for (const wrap of Array.from(diagramContainers)) {
+    wrap.style.width = "100%";
+    wrap.style.maxWidth =
+      limits.contentWidthPx > 0 ? `${limits.contentWidthPx}px` : "100%";
+    wrap.style.minWidth = "0";
+    wrap.style.boxSizing = "border-box";
+    wrap.style.overflow = "hidden";
+  }
+
   const svgs = container.querySelectorAll<SVGSVGElement>(
     ".mermaid svg:not(.svg-icon), .block-language-mermaid svg:not(.svg-icon), svg:not(.svg-icon)",
   );
+
   for (const svg of Array.from(svgs)) {
     const rect = svg.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) continue;
 
-    // Ensure viewBox is established so browser maintains aspect ratio upon scaling
-    if (!svg.getAttribute("viewBox")) {
-      svg.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
+    let vbWidth = 0;
+    let vbHeight = 0;
+    const rawViewBox = svg.getAttribute("viewBox");
+    if (rawViewBox) {
+      const parts = rawViewBox
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number);
+      if (
+        parts.length === 4 &&
+        parts[2] !== undefined &&
+        parts[3] !== undefined &&
+        !isNaN(parts[2]) &&
+        !isNaN(parts[3]) &&
+        parts[2] > 0 &&
+        parts[3] > 0
+      ) {
+        vbWidth = parts[2];
+        vbHeight = parts[3];
+      }
     }
 
-    const maxAllowedW = limits.contentWidthPx;
-    const maxAllowedH = Math.max(100, limits.contentHeightPx - 16);
-    const scaleW = rect.width > maxAllowedW ? maxAllowedW / rect.width : 1;
-    const scaleH = rect.height > maxAllowedH ? maxAllowedH / rect.height : 1;
-    const scale = Math.min(scaleW, scaleH);
+    if (!rawViewBox || vbWidth <= 0 || vbHeight <= 0) {
+      svg.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
+      vbWidth = rect.width;
+      vbHeight = rect.height;
+    }
 
-    if (scale < 1) {
-      svg.style.width = `${Math.floor(rect.width * scale)}px`;
-      svg.style.height = `${Math.floor(rect.height * scale)}px`;
+    const inlineMaxW = parseFloat(svg.style.maxWidth || "");
+    const hasInlineMaxPx =
+      !isNaN(inlineMaxW) &&
+      inlineMaxW > 0 &&
+      svg.style.maxWidth.trim().endsWith("px");
+    const attrW = parseFloat(svg.getAttribute("width") || "");
+    const hasNumericAttrW =
+      !isNaN(attrW) &&
+      attrW > 0 &&
+      !String(svg.getAttribute("width")).includes("%");
+
+    const naturalWidth = Math.max(
+      rect.width,
+      vbWidth,
+      hasInlineMaxPx ? inlineMaxW : 0,
+      hasNumericAttrW ? attrW : 0,
+    );
+
+    const isOversized =
+      limits.contentWidthPx > 0 &&
+      (rect.width > limits.contentWidthPx ||
+        naturalWidth > limits.contentWidthPx);
+    const isMermaidSvg =
+      svg.closest(".mermaid, .block-language-mermaid") !== null;
+
+    if (isOversized || isMermaidSvg) {
+      const targetWidthPx =
+        limits.contentWidthPx > 0
+          ? Math.floor(Math.min(rect.width, limits.contentWidthPx))
+          : Math.floor(rect.width);
+
+      const aspectRatio =
+        vbWidth > 0 && vbHeight > 0
+          ? vbHeight / vbWidth
+          : rect.height / rect.width;
+
+      const targetHeightPx =
+        rect.width > limits.contentWidthPx
+          ? Math.max(
+              1,
+              Math.floor(rect.height * (limits.contentWidthPx / rect.width)),
+            )
+          : Math.max(1, Math.floor(targetWidthPx * aspectRatio));
+
+      svg.style.width = `${targetWidthPx}px`;
+      svg.style.height = `${targetHeightPx}px`;
       svg.style.maxWidth = "100%";
+      svg.style.minWidth = "0";
+      svg.setAttribute("data-diagram-width", String(targetWidthPx));
+      svg.setAttribute("data-full-height", String(targetHeightPx));
+
+      let hostWrap: HTMLElement | null = svg.parentElement;
+      while (hostWrap && hostWrap !== container) {
+        if (
+          hostWrap.classList.contains("mermaid") ||
+          hostWrap.classList.contains("block-language-mermaid")
+        ) {
+          hostWrap.setAttribute("data-diagram-width", String(targetWidthPx));
+          hostWrap.setAttribute("data-full-height", String(targetHeightPx));
+        }
+        hostWrap = hostWrap.parentElement;
+      }
     }
   }
 
@@ -311,6 +400,42 @@ export function fitElementsToPageBounds(
       innerMath.style.display = "inline-block";
       innerMath.style.transform = `scale(${scale})`;
       innerMath.style.transformOrigin = "left center";
+    }
+  }
+
+  // 3. Proportional horizontal fit for wide tables
+  const tables = container.querySelectorAll<HTMLTableElement>("table");
+  for (const table of Array.from(tables)) {
+    table.style.width = "100%";
+    table.style.maxWidth = "100%";
+
+    const rect = table.getBoundingClientRect();
+    const tableWidth = Math.max(table.scrollWidth, Math.ceil(rect.width));
+
+    if (tableWidth > limits.contentWidthPx && limits.contentWidthPx > 0) {
+      const scale = limits.contentWidthPx / tableWidth;
+      const fontScale = Math.max(0.6, scale * 0.96);
+      table.style.fontSize = `${Math.floor(fontScale * 100)}%`;
+
+      const padY = Math.max(2, Math.floor(6 * fontScale));
+      const padX = Math.max(3, Math.floor(10 * fontScale));
+      const cells = table.querySelectorAll<HTMLElement>("th, td");
+      for (const cell of Array.from(cells)) {
+        cell.style.padding = `${padY}px ${padX}px`;
+        cell.style.overflowWrap = "break-word";
+        cell.style.wordBreak = "break-word";
+        cell.style.boxSizing = "border-box";
+        cell.style.maxWidth = "100%";
+      }
+
+      const postRect = table.getBoundingClientRect();
+      const postWidth = Math.max(table.scrollWidth, Math.ceil(postRect.width));
+      if (postWidth > limits.contentWidthPx) {
+        table.style.setProperty(
+          "zoom",
+          String(limits.contentWidthPx / postWidth),
+        );
+      }
     }
   }
 }
